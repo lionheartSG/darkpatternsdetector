@@ -2,6 +2,8 @@ import { openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { buildAnalysisPrompt, SYSTEM_PROMPT } from "@/lib/ai/prompts";
 import { scanResultSchema } from "@/lib/ai/schemas";
+import { buildSafeSummary } from "@/lib/constants/wording";
+import { sanitizeWording } from "@/lib/wording/sanitize";
 import type {
   AnalysisDetection,
   HeuristicSignal,
@@ -11,6 +13,17 @@ import type {
 function getModel() {
   const modelName = process.env.AI_MODEL ?? "gpt-4o";
   return openai(modelName);
+}
+
+function sanitizeDetections(
+  detections: AnalysisDetection[],
+): AnalysisDetection[] {
+  return detections.map((detection) => ({
+    ...detection,
+    description: sanitizeWording(detection.description),
+    evidence: sanitizeWording(detection.evidence),
+    patternType: sanitizeWording(detection.patternType),
+  }));
 }
 
 export async function analyzePage(input: {
@@ -44,24 +57,28 @@ export async function analyzePage(input: {
     schema: scanResultSchema,
   });
 
+  const detections = sanitizeDetections(result.object.detections);
+
   return {
     riskScore: result.object.riskScore,
-    summary: result.object.summary,
-    detections: result.object.detections,
+    summary: sanitizeWording(result.object.summary),
+    detections,
   };
 }
 
 function buildFallbackResult(
   heuristicSignals: HeuristicSignal[],
 ): ScanResultPayload {
-  const detections: AnalysisDetection[] = heuristicSignals.map((signal) => ({
-    category: signal.category,
-    patternType: signal.patternType,
-    severity: signal.severity,
-    description: signal.description,
-    evidence: signal.evidence,
-    confidence: signal.confidence,
-  }));
+  const detections = sanitizeDetections(
+    heuristicSignals.map((signal) => ({
+      category: signal.category,
+      patternType: signal.patternType,
+      severity: signal.severity,
+      description: signal.description,
+      evidence: signal.evidence,
+      confidence: signal.confidence,
+    })),
+  );
 
   const riskScore = computeRiskScore(detections);
 
@@ -69,8 +86,8 @@ function buildFallbackResult(
     riskScore,
     summary:
       detections.length > 0
-        ? "Heuristic analysis detected potential predatory patterns. Configure OPENAI_API_KEY for deeper AI review."
-        : "No predatory patterns were detected by heuristic analysis.",
+        ? buildSafeSummary(detections.length)
+        : "No major pressure cues were detected by automated checks in this scan.",
     detections,
   };
 }

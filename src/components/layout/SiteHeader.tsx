@@ -1,4 +1,3 @@
-import { ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
 export function SiteHeader() {
@@ -9,8 +8,11 @@ export function SiteHeader() {
           href="/"
           className="inline-flex cursor-pointer items-center gap-2 text-foreground transition-opacity duration-200 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
-          <ShieldCheck className="size-6 text-primary" aria-hidden="true" />
-          <span className="text-lg font-semibold">Dark Pattern Detector</span>
+          <span
+            className="size-2.5 rounded-full bg-primary"
+            aria-hidden="true"
+          />
+          <span className="text-lg font-semibold">DarkLens</span>
         </Link>
       </div>
     </header>

@@ -33,6 +33,8 @@ export async function getScan(scanId: string): Promise<GetScanResult> {
     errorMessage: scan.errorMessage,
     createdAt: scan.createdAt,
     completedAt: scan.completedAt,
+    viewportScreenshot: scan.viewportScreenshot,
+    screenshotCapturedAt: scan.screenshotCapturedAt,
     detections: scan.detections.map((detection) => ({
       id: detection.id,
       category: detection.category,

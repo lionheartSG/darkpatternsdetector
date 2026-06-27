@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans } from "next/font/google";
-import { SiteFooter } from "@/components/layout/SiteFooter";
-import { SiteHeader } from "@/components/layout/SiteHeader";
+import { Footer } from "@/components/landing/Footer";
+import { Header } from "@/components/landing/Header";
 import "./globals.css";
 
 const ibmPlexSans = IBM_Plex_Sans({
@@ -12,9 +12,9 @@ const ibmPlexSans = IBM_Plex_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Dark Pattern Detector",
+  title: "DarkLens — Spot pressure tactics before you decide",
   description:
-    "Detect dark patterns and deceptive UX on websites — fake urgency, hidden fees, misleading scarcity, and more.",
+    "DarkLens scans public webpages for potential urgency, scarcity, pricing, and checkout design cues, then explains the evidence in plain English.",
 };
 
 export default function RootLayout({
@@ -25,9 +25,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${ibmPlexSans.variable} h-full antialiased`}>
       <body className="flex min-h-dvh flex-col bg-background text-foreground">
-        <SiteHeader />
+        <Header />
         <main className="flex-1">{children}</main>
-        <SiteFooter />
+        <Footer />
       </body>
     </html>
   );

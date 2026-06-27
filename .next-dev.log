@@ -1,0 +1,7 @@
+▲ Next.js 16.2.9 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://10.0.2.209:3000
+- Environments: .env
+✓ Ready in 3.4s
+  Skipping creating a lockfile at C:\Users\65867\Documents\DarkLens\.next\dev\lock because we're using WASM bindings
+[?25h

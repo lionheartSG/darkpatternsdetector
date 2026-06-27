@@ -1,11 +1,32 @@
+import { assessPageAccess, type PageAccessStatus } from "@/lib/page-access";
+
 export type FetchedPage = {
   finalUrl: string;
   pageTitle: string;
   visibleText: string;
   interactiveHtml: string;
+  viewportScreenshot: string;
+  fullPageScreenshot: string;
+  screenshotCapturedAt: Date;
+  httpStatus: number;
+  access: PageAccessStatus;
 };
 
-const FETCH_TIMEOUT_MS = 30_000;
+const FETCH_TIMEOUT_MS = 45_000;
+const MAX_STORED_SCREENSHOT_CHARS = 500_000;
+
+const BROWSER_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+const COUNTDOWN_SELECTORS = [
+  "[class*='countdown' i]",
+  "[id*='countdown' i]",
+  "[class*='timer' i]",
+  "[id*='timer' i]",
+  "[data-countdown]",
+  "[data-timer]",
+  "[role='timer']",
+].join(", ");
 
 async function getBrowser() {
   const isServerless = Boolean(
@@ -27,35 +48,84 @@ async function getBrowser() {
   return chromium.launch({ headless: true });
 }
 
+async function createBrowserContext(
+  browser: Awaited<ReturnType<typeof getBrowser>>,
+) {
+  const context = await browser.newContext({
+    userAgent: BROWSER_USER_AGENT,
+    viewport: { width: 1366, height: 768 },
+    locale: "en-SG",
+    timezoneId: "Asia/Singapore",
+    extraHTTPHeaders: {
+      Accept:
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+      "Accept-Language": "en-SG,en;q=0.9",
+      "Sec-Fetch-Dest": "document",
+      "Sec-Fetch-Mode": "navigate",
+      "Sec-Fetch-Site": "none",
+      "Sec-Fetch-User": "?1",
+      "Upgrade-Insecure-Requests": "1",
+    },
+  });
+
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, "webdriver", {
+      get: () => false,
+    });
+  });
+
+  return context;
+}
+
+export function trimScreenshotForStorage(base64: string): string | null {
+  if (!base64 || base64.length > MAX_STORED_SCREENSHOT_CHARS) {
+    return null;
+  }
+  return base64;
+}
+
 export async function fetchPage(url: string): Promise<FetchedPage> {
   const browser = await getBrowser();
 
   try {
-    const context = await browser.newContext({
-      userAgent:
-        "Mozilla/5.0 (compatible; DarkPatternDetector/1.0; +https://darkpatterndetector.local)",
-      viewport: { width: 1280, height: 720 },
-    });
-
+    const context = await createBrowserContext(browser);
     const page = await context.newPage();
     page.setDefaultTimeout(FETCH_TIMEOUT_MS);
 
-    await page.route("**/*", (route) => {
-      const type = route.request().resourceType();
-      if (type === "image" || type === "font" || type === "media") {
-        void route.abort();
-        return;
-      }
-      void route.continue();
-    });
-
-    await page.goto(url, {
-      waitUntil: "domcontentloaded",
+    let response = await page.goto(url, {
+      waitUntil: "load",
       timeout: FETCH_TIMEOUT_MS,
     });
-    await page.waitForTimeout(1500);
 
-    const data = await page.evaluate(() => {
+    if (!response || response.status() >= 400) {
+      await page.waitForTimeout(1500);
+      response = await page.goto(url, {
+        waitUntil: "networkidle",
+        timeout: FETCH_TIMEOUT_MS,
+      });
+    }
+
+    const httpStatus = response?.status() ?? 0;
+
+    await page.waitForTimeout(2000);
+
+    try {
+      await page.waitForSelector(COUNTDOWN_SELECTORS, { timeout: 8000 });
+    } catch {
+      // Dynamic timers may load later or not exist on this page.
+    }
+
+    await page.waitForTimeout(1000);
+
+    const viewportScreenshot = (
+      await page.screenshot({ type: "png", fullPage: false })
+    ).toString("base64");
+
+    const fullPageScreenshot = (
+      await page.screenshot({ type: "png", fullPage: true })
+    ).toString("base64");
+
+    const data = await page.evaluate((countdownSelector) => {
       const interactiveSelectors = [
         "input",
         "button",
@@ -67,12 +137,14 @@ export async function fetchPage(url: string): Promise<FetchedPage> {
         "[class*='timer']",
         "[class*='popup']",
         "[class*='modal']",
+        "[class*='stock']",
+        "[class*='urgency']",
       ].join(",");
 
       const interactiveNodes = Array.from(
         document.querySelectorAll(interactiveSelectors),
       )
-        .slice(0, 80)
+        .slice(0, 100)
         .map((node) => {
           const element = node as HTMLElement;
           const tag = element.tagName.toLowerCase();
@@ -80,7 +152,7 @@ export async function fetchPage(url: string): Promise<FetchedPage> {
           const className = element.className
             ? `.${String(element.className).split(" ").slice(0, 3).join(".")}`
             : "";
-          const text = element.innerText?.trim().slice(0, 120) ?? "";
+          const text = element.innerText?.trim().slice(0, 160) ?? "";
           const checked =
             element instanceof HTMLInputElement && element.checked
               ? " checked"
@@ -88,12 +160,30 @@ export async function fetchPage(url: string): Promise<FetchedPage> {
           return `<${tag}${id}${className}${checked}>${text}</${tag}>`;
         });
 
+      const countdownNodes = Array.from(
+        document.querySelectorAll(countdownSelector),
+      )
+        .slice(0, 20)
+        .map((node) => (node as HTMLElement).innerText?.trim() ?? "")
+        .filter(Boolean);
+
+      const bodyText =
+        document.body?.innerText?.replace(/\s+/g, " ").trim() ?? "";
+
       return {
         pageTitle: document.title,
-        visibleText:
-          document.body?.innerText?.replace(/\s+/g, " ").trim() ?? "",
-        interactiveHtml: interactiveNodes.join("\n"),
+        visibleText: bodyText,
+        interactiveHtml: [
+          ...interactiveNodes,
+          ...countdownNodes.map((text) => `<countdown>${text}</countdown>`),
+        ].join("\n"),
       };
+    }, COUNTDOWN_SELECTORS);
+
+    const access = assessPageAccess({
+      httpStatus,
+      pageTitle: data.pageTitle,
+      visibleText: data.visibleText,
     });
 
     return {
@@ -101,6 +191,11 @@ export async function fetchPage(url: string): Promise<FetchedPage> {
       pageTitle: data.pageTitle,
       visibleText: data.visibleText.slice(0, 12_000),
       interactiveHtml: data.interactiveHtml.slice(0, 8_000),
+      viewportScreenshot,
+      fullPageScreenshot,
+      screenshotCapturedAt: new Date(),
+      httpStatus,
+      access,
     };
   } finally {
     await browser.close();

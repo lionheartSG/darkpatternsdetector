@@ -50,6 +50,8 @@ export type ScanWithDetections = {
   pageTitle: string | null;
   finalUrl: string | null;
   errorMessage: string | null;
+  viewportScreenshot: string | null;
+  screenshotCapturedAt: Date | null;
   createdAt: Date;
   completedAt: Date | null;
   detections: Array<{

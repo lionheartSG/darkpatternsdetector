@@ -8,6 +8,10 @@ const URGENCY_PATTERNS = [
   /offer expires/i,
   /ends in \d+/i,
   /sale ends/i,
+  /ends today/i,
+  /last chance/i,
+  /flash sale/i,
+  /offer ends/i,
 ];
 
 const SCARCITY_PATTERNS = [
@@ -15,9 +19,29 @@ const SCARCITY_PATTERNS = [
   /low stock/i,
   /selling fast/i,
   /high demand/i,
-  /people (are )?viewing/i,
-  /in \d+ carts?/i,
   /almost sold out/i,
+  /limited quantity/i,
+];
+
+const SOCIAL_PROOF_PATTERNS = [
+  /people (are )?viewing/i,
+  /bought in the last/i,
+  /someone just purchased/i,
+  /recent(ly)? purchased/i,
+  /\d+ (people|users|customers) (are )?viewing/i,
+];
+
+const CONFIRMSHAMING_PATTERNS = [
+  /no thanks,? i hate saving/i,
+  /i don['’]t want a discount/i,
+  /no,? i (like|prefer) paying full price/i,
+];
+
+const NAGGING_PATTERNS = [
+  /popup/i,
+  /modal/i,
+  /sticky (bar|banner|footer)/i,
+  /don['’]t (go|leave)/i,
 ];
 
 const PRESELECTION_PATTERNS = [
@@ -41,7 +65,13 @@ export function detectUrgency(text: string, html: string): HeuristicSignal[] {
     /countdown|timer|\d{1,2}:\d{2}/i.test(combined) ||
     /\[class\*='countdown'\]|\[id\*='countdown'\]|\[class\*='timer'\]/i.test(
       html,
-    );
+    ) ||
+    (/\d+\s*(days?|hrs?|hours?|mins?|minutes?|secs?|seconds?)/i.test(
+      combined,
+    ) &&
+      /offer ends|sale ends|ends today|ends sunday|limited time|countdown|timer/i.test(
+        combined,
+      ));
 
   return [
     {
@@ -49,8 +79,8 @@ export function detectUrgency(text: string, html: string): HeuristicSignal[] {
       patternType: hasTimer ? "CountdownTimer" : "LimitedTimeMessage",
       severity: hasTimer ? "HIGH" : "MEDIUM",
       description: hasTimer
-        ? "Page contains countdown or timer language that may pressure users."
-        : "Page uses limited-time messaging that may create artificial urgency.",
+        ? "Potential urgency cue: countdown or timer language may encourage faster decision-making."
+        : "Potential urgency cue: limited-time wording may encourage faster decision-making.",
       evidence: matches.slice(0, 2).join("; "),
       confidence: hasTimer ? 0.85 : 0.7,
       source: "heuristic",
@@ -69,10 +99,65 @@ export function detectScarcity(text: string): HeuristicSignal[] {
       patternType: isLowStock ? "LowStockMessage" : "HighDemandMessage",
       severity: "MEDIUM",
       description: isLowStock
-        ? "Page displays low-stock messaging that may exaggerate scarcity."
-        : "Page displays high-demand messaging that may exaggerate scarcity.",
+        ? "Possible scarcity cue: low-stock messaging may encourage faster decision-making."
+        : "Possible scarcity cue: high-demand messaging may encourage faster decision-making.",
       evidence: matches.slice(0, 2).join("; "),
       confidence: 0.75,
+      source: "heuristic",
+    },
+  ];
+}
+
+export function detectSocialProof(text: string): HeuristicSignal[] {
+  const matches = matchPatterns(text, SOCIAL_PROOF_PATTERNS);
+  if (matches.length === 0) return [];
+
+  return [
+    {
+      category: "SOCIAL_PROOF",
+      patternType: "ActivityNotification",
+      severity: "MEDIUM",
+      description:
+        "Possible social proof cue: activity or popularity messaging may be difficult to verify independently.",
+      evidence: matches.slice(0, 2).join("; "),
+      confidence: 0.7,
+      source: "heuristic",
+    },
+  ];
+}
+
+export function detectConfirmshaming(text: string): HeuristicSignal[] {
+  const matches = matchPatterns(text, CONFIRMSHAMING_PATTERNS);
+  if (matches.length === 0) return [];
+
+  return [
+    {
+      category: "MISDIRECTION",
+      patternType: "Confirmshaming",
+      severity: "MEDIUM",
+      description:
+        "Design cue detected: dismissive opt-out wording may pressure users away from declining an offer.",
+      evidence: matches.slice(0, 2).join("; "),
+      confidence: 0.8,
+      source: "heuristic",
+    },
+  ];
+}
+
+export function detectNagging(text: string, html: string): HeuristicSignal[] {
+  const combined = `${text}\n${html}`;
+  const matches = matchPatterns(combined, NAGGING_PATTERNS);
+  if (matches.length === 0) return [];
+
+  return [
+    {
+      category: "NAGGING",
+      patternType: "RepeatedPopupOrStickyBanner",
+      severity: "LOW",
+      description:
+        "Design cue detected: popup, modal, or sticky banner patterns may add checkout pressure.",
+      evidence: matches.slice(0, 2).join("; "),
+      confidence: 0.65,
       source: "heuristic",
     },
   ];
@@ -90,7 +175,7 @@ export function detectPreselection(html: string): HeuristicSignal[] {
       patternType: "PreCheckedBox",
       severity: "MEDIUM",
       description:
-        "Page may use pre-selected options that nudge users toward add-ons or marketing consent.",
+        "Design cue detected: pre-selected options may nudge users toward add-ons or marketing consent.",
       evidence: hasCheckedInput
         ? "Pre-checked input elements detected in page markup."
         : matches.join("; "),
@@ -107,6 +192,9 @@ export function runHeuristics(page: {
   return [
     ...detectUrgency(page.visibleText, page.interactiveHtml),
     ...detectScarcity(page.visibleText),
+    ...detectSocialProof(page.visibleText),
+    ...detectConfirmshaming(page.visibleText),
+    ...detectNagging(page.visibleText, page.interactiveHtml),
     ...detectPreselection(page.interactiveHtml),
   ];
 }

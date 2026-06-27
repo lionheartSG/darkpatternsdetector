@@ -56,7 +56,7 @@ export function RiskGauge({ score }: RiskGaugeProps) {
             {clamped}
           </span>
           <span className="text-xs uppercase tracking-wide text-secondary">
-            Risk score
+            Caution level
           </span>
         </div>
       </div>

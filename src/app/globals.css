@@ -1,37 +1,20 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #0f172a;
-  --primary: #d97706;
+  --background: #faf8f5;
+  --foreground: #1c1c1e;
+  --primary: #7a1f2b;
   --on-primary: #ffffff;
-  --secondary: #64748b;
-  --accent: #1e40af;
-  --muted: #f1f5f9;
-  --border: #e2e8f0;
-  --destructive: #dc2626;
-  --warning: #d97706;
-  --success: #059669;
-  --ring: #d97706;
-  --brand-red: #931403;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0f172a;
-    --foreground: #f8fafc;
-    --primary: #f59e0b;
-    --on-primary: #0f172a;
-    --secondary: #94a3b8;
-    --accent: #3b82f6;
-    --muted: #272f42;
-    --border: #334155;
-    --destructive: #ef4444;
-    --warning: #f59e0b;
-    --success: #10b981;
-    --ring: #f59e0b;
-    --brand-red: #b91c1c;
-  }
+  --secondary: #5c5c66;
+  --accent: #7a1f2b;
+  --muted: #f3f0eb;
+  --border: #e4dfd6;
+  --destructive: #9b1c1c;
+  --warning: #92600a;
+  --success: #166534;
+  --ring: #7a1f2b;
+  --brand-red: #7a1f2b;
+  --surface: #ffffff;
 }
 
 @theme inline {
@@ -48,21 +31,16 @@
   --color-success: var(--success);
   --color-ring: var(--ring);
   --color-brand-red: var(--brand-red);
+  --color-surface: var(--surface);
   --font-sans: var(--font-ibm-plex-sans);
 }
 
-.hero-section {
-  min-height: calc(100dvh - 8rem);
-  background: linear-gradient(135deg, #1e293b 0%, #334155 45%, #1e3a8a 100%);
-}
-
-.hero-section-bg,
 .scan-overlay-bg {
   isolation: isolate;
 }
 
 .scan-overlay {
-  background: linear-gradient(135deg, #1e293b 0%, #334155 45%, #1e3a8a 100%);
+  background: #1c1c1e;
 }
 
 .progress-stripes {
@@ -124,36 +102,30 @@
   }
 }
 
-.floating-orb {
-  animation: float-orb 8s ease-in-out infinite;
-}
-
-.floating-orb:nth-child(2) {
-  animation-delay: 2s;
-}
-
-.floating-orb:nth-child(3) {
-  animation-delay: 4s;
-}
-
-@keyframes float-orb {
-  0%,
+@keyframes highlight-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(122, 31, 43, 0.35);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(122, 31, 43, 0);
+  }
   100% {
-    transform: translateY(0);
+    box-shadow: 0 0 0 0 rgba(122, 31, 43, 0);
   }
-  50% {
-    transform: translateY(-12px);
-  }
+}
+
+.report-highlight {
+  animation: highlight-ring 1.2s ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms;
-    animation-iteration-count: 1;
-    transition-duration: 0.01ms;
-    scroll-behavior: auto;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

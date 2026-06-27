@@ -1,6 +1,5 @@
 "use client";
 
-import { Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { submitScan } from "@/app/actions/scan/submitScan";
@@ -8,52 +7,49 @@ import { ScanProgressOverlay } from "@/components/scan/ScanProgressOverlay";
 import { TermsOfUseDialog } from "@/components/scan/TermsOfUseDialog";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { HOMEPAGE_DISCLAIMER } from "@/lib/constants/disclaimers";
+import { hasAcceptedCurrentTerms } from "@/lib/terms-storage";
 
 export function UrlScanForm() {
   const router = useRouter();
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [termsOpen, setTermsOpen] = useState(false);
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  function handleBlur() {
-    if (!url.trim()) {
-      setError(null);
-      return;
+  function validateUrl(
+    input: string,
+  ): { ok: true; url: string } | { ok: false; error: string } {
+    const trimmed = input.trim();
+    if (!trimmed) {
+      return { ok: false, error: "Please paste a public webpage URL." };
     }
 
     try {
-      new URL(url.includes("://") ? url : `https://${url}`);
-      setError(null);
+      const parsed = new URL(
+        trimmed.startsWith("http://") || trimmed.startsWith("https://")
+          ? trimmed
+          : `https://${trimmed}`,
+      );
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return {
+          ok: false,
+          error: "Please enter a valid URL starting with http:// or https://.",
+        };
+      }
+      return { ok: true, url: parsed.toString() };
     } catch {
-      setError("Enter a valid website URL, such as https://example.com");
+      return {
+        ok: false,
+        error: "Please enter a valid URL starting with http:// or https://.",
+      };
     }
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-
-    if (!url.trim()) {
-      setError("Please enter a website URL.");
-      return;
-    }
-
-    try {
-      new URL(url.includes("://") ? url : `https://${url}`);
-    } catch {
-      setError("Enter a valid website URL, such as https://example.com");
-      return;
-    }
-
-    setTermsOpen(true);
-  }
-
-  function startScan() {
-    setTermsOpen(false);
-
+  function beginScan(scanUrl: string) {
     startTransition(async () => {
-      const result = await submitScan(url);
+      const result = await submitScan(scanUrl);
       if (!result.ok) {
         setError(result.error);
         return;
@@ -62,23 +58,55 @@ export function UrlScanForm() {
     });
   }
 
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+
+    const result = validateUrl(url);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+
+    if (hasAcceptedCurrentTerms()) {
+      beginScan(result.url);
+      return;
+    }
+
+    setPendingUrl(result.url);
+    setTermsOpen(true);
+  }
+
+  function handleTermsAccept() {
+    setTermsOpen(false);
+    if (pendingUrl) {
+      beginScan(pendingUrl);
+      setPendingUrl(null);
+    }
+  }
+
+  function handleTermsClose() {
+    setTermsOpen(false);
+    setPendingUrl(null);
+  }
+
   return (
     <>
       <TermsOfUseDialog
         open={termsOpen}
-        onClose={() => setTermsOpen(false)}
-        onAccept={startScan}
+        onClose={handleTermsClose}
+        onAccept={handleTermsAccept}
       />
 
       {isPending ? <ScanProgressOverlay url={url} /> : null}
 
-      <div className="rounded-[28px] border border-border bg-white p-8 shadow-[0_20px_80px_rgba(0,0,0,0.12)] md:rounded-[34px] md:p-12 dark:bg-background dark:shadow-[0_20px_80px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-border bg-surface p-8 shadow-sm md:p-10">
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="text-3xl font-medium tracking-tight text-foreground md:text-4xl">
-            Ready to scan a website?
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
+            Check a public webpage
           </h2>
-          <p className="mt-2 font-medium text-secondary md:text-lg">
-            Paste a URL to detect dark patterns and deceptive UX
+          <p className="mt-2 text-secondary">
+            Paste a URL to review potential pressure cues and design signals.
           </p>
 
           <form
@@ -87,14 +115,13 @@ export function UrlScanForm() {
             noValidate
           >
             <Input
-              label="Website URL"
+              label="Public webpage URL"
               type="url"
               name="url"
               value={url}
               onChange={(event) => setUrl(event.target.value)}
-              onBlur={handleBlur}
               placeholder="https://example.com"
-              helperText="We analyze the landing page for fake urgency, hidden fees, and other dark patterns."
+              helperText={HOMEPAGE_DISCLAIMER}
               error={error ?? undefined}
               disabled={isPending}
               autoComplete="url"
@@ -105,14 +132,10 @@ export function UrlScanForm() {
                 type="submit"
                 size="lg"
                 loading={isPending}
-                disabled={isPending || !url.trim()}
-                className="group min-w-[220px] rounded-full border border-foreground bg-white px-8 text-foreground hover:border-brand-red hover:bg-brand-red hover:text-white dark:border-border dark:bg-background dark:hover:border-brand-red dark:hover:bg-brand-red dark:hover:text-white"
+                disabled={isPending}
+                className="min-w-[220px] rounded-xl bg-primary text-on-primary hover:bg-primary/90"
               >
-                <Upload
-                  className="size-5 transition-transform duration-200 group-hover:scale-110 motion-reduce:transition-none"
-                  aria-hidden="true"
-                />
-                Scan website
+                Scan webpage
               </Button>
             </div>
           </form>

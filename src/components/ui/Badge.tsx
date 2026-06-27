@@ -43,14 +43,17 @@ export function severityToBadgeVariant(
 }
 
 export function riskScoreToLabel(score: number): string {
-  if (score >= 70) return "High risk";
-  if (score >= 40) return "Moderate risk";
-  return "Low risk";
+  if (score === 0) return "Insufficient evidence";
+  if (score <= 5) return "No major concerns detected";
+  if (score < 40) return "Some caution";
+  if (score < 70) return "Moderate caution";
+  return "High caution";
 }
 
 export function riskScoreToBadgeVariant(
   score: number,
 ): NonNullable<BadgeProps["variant"]> {
+  if (score === 0) return "default";
   if (score >= 70) return "destructive";
   if (score >= 40) return "warning";
   return "success";

@@ -21,18 +21,20 @@ enum Severity {
 }
 
 model Scan {
-  id            String      @id @default(cuid())
-  url           String
-  normalizedUrl String
-  status        ScanStatus  @default(PENDING)
-  riskScore     Int?
-  summary       String?
-  pageTitle     String?
-  finalUrl      String?
-  errorMessage  String?
-  createdAt     DateTime    @default(now())
-  completedAt   DateTime?
-  detections    Detection[]
+  id                   String      @id @default(cuid())
+  url                  String
+  normalizedUrl        String
+  status               ScanStatus  @default(PENDING)
+  riskScore            Int?
+  summary              String?
+  pageTitle            String?
+  finalUrl             String?
+  errorMessage         String?
+  viewportScreenshot   String?     @db.Text
+  screenshotCapturedAt DateTime?
+  createdAt            DateTime    @default(now())
+  completedAt          DateTime?
+  detections           Detection[]
 }
 
 model Detection {

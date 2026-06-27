@@ -124,7 +124,7 @@ export async function validateScanUrl(
   if (!schemaResult.success) {
     return {
       ok: false,
-      error: schemaResult.error.errors[0]?.message ?? "Invalid URL.",
+      error: schemaResult.error.issues[0]?.message ?? "Invalid URL.",
     };
   }
 
