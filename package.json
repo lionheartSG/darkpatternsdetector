@@ -2,16 +2,24 @@
   "name": "scamwebsitedetector",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "shared",
+    "extension"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "biome check",
+    "typecheck": "tsc --noEmit",
     "format": "biome format --write",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "dev:extension": "npm run dev -w @darkpatterns/extension",
+    "build:extension": "npm run build -w @darkpatterns/extension"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.1",
+    "@darkpatterns/shared": "file:./shared",
     "@prisma/client": "^6.19.3",
     "@sparticuz/chromium": "^147.0.0",
     "ai": "^7.0.3",

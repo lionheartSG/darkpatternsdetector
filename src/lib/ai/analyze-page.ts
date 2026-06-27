@@ -7,6 +7,7 @@ import { sanitizeWording } from "@/lib/wording/sanitize";
 import type {
   AnalysisDetection,
   HeuristicSignal,
+  PageType,
   ScanResultPayload,
 } from "@/types/scan";
 
@@ -31,6 +32,7 @@ export async function analyzePage(input: {
   pageTitle: string;
   visibleText: string;
   interactiveHtml: string;
+  pageType?: PageType;
   heuristicSignals: HeuristicSignal[];
 }): Promise<ScanResultPayload> {
   if (!process.env.OPENAI_API_KEY) {
@@ -53,6 +55,7 @@ export async function analyzePage(input: {
       visibleText: input.visibleText,
       interactiveHtml: input.interactiveHtml,
       heuristicSignals: heuristicSummary,
+      pageType: input.pageType,
     }),
     schema: scanResultSchema,
   });

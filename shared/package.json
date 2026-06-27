@@ -1,0 +1,14 @@
+{
+  "name": "@darkpatterns/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./types": "./types/scan.ts",
+    "./heuristics": "./heuristics/index.ts",
+    "./page-context": "./page-context.ts",
+    "./wording": "./wording/index.ts",
+    "./date": "./date.ts"
+  }
+}

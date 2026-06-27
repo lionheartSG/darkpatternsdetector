@@ -1,3 +1,5 @@
+import type { PageType } from "@/types/scan";
+
 export const SYSTEM_PROMPT = `You are a consumer decision-support analyst reviewing public webpages for observable pressure tactics and design cues.
 
 Analyze the provided page content and identify cues that may encourage faster decision-making. Only report cues with clear evidence from the text or HTML snippets provided.
@@ -30,9 +32,15 @@ export function buildAnalysisPrompt(input: {
   visibleText: string;
   interactiveHtml: string;
   heuristicSignals: string;
+  pageType?: PageType;
 }): string {
-  return `Analyze this public webpage for observable pressure tactics and design cues.
+  const pageContextNote =
+    input.pageType === "editorial"
+      ? `\nPage context: EDITORIAL — this is a news article or blog post reporting on pressure tactics, not a checkout or store page. Ignore journalistic quotes, regulatory findings, and descriptions of other retailers' websites unless the same tactic is clearly implemented in this site's own interactive UI.\n`
+      : "";
 
+  return `Analyze this public webpage for observable pressure tactics and design cues.
+${pageContextNote}
 URL: ${input.url}
 Page title: ${input.pageTitle}
 
