@@ -89,7 +89,7 @@ export function ScanReport({ scan }: ScanReportProps) {
         <Card className="flex flex-col items-center gap-3 py-12 text-center">
           <ShieldCheck className="size-10 text-success" aria-hidden="true" />
           <h2 className="text-xl font-semibold text-foreground">
-            No predatory patterns detected
+            No dark patterns detected
           </h2>
           <p className="max-w-prose text-sm text-secondary">
             We did not find strong evidence of deceptive design on this page.

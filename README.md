@@ -1,6 +1,6 @@
 # Dark Patterns Detector
 
-Analyze websites for predatory design patterns — fake urgency, misleading scarcity, hidden fees, and other dark UX tactics.
+Detect dark patterns and deceptive UX on websites — fake urgency, misleading scarcity, hidden fees, and more.
 
 ## Stack
 

@@ -10,7 +10,7 @@ export function SiteHeader() {
           className="inline-flex cursor-pointer items-center gap-2 text-foreground transition-opacity duration-200 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           <ShieldCheck className="size-6 text-primary" aria-hidden="true" />
-          <span className="text-lg font-semibold">Scam Website Detector</span>
+          <span className="text-lg font-semibold">Dark Pattern Detector</span>
         </Link>
       </div>
     </header>

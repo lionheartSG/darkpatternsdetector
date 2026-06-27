@@ -12,9 +12,9 @@ const ibmPlexSans = IBM_Plex_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Scam Website Detector",
+  title: "Dark Pattern Detector",
   description:
-    "Analyze websites for predatory design patterns like fake urgency, hidden fees, and deceptive UX.",
+    "Detect dark patterns and deceptive UX on websites — fake urgency, hidden fees, misleading scarcity, and more.",
 };
 
 export default function RootLayout({

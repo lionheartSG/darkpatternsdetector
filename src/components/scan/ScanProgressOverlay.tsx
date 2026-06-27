@@ -54,8 +54,8 @@ export function ScanProgressOverlay({ url }: ScanProgressOverlayProps) {
           </div>
 
           <h1 className="text-left text-4xl font-semibold text-white sm:text-5xl md:text-6xl">
-            Finding
-            <span className="text-white"> red flags</span>
+            Detecting
+            <span className="text-white"> dark patterns</span>
             <span className="loading-dots" aria-hidden="true">
               <span>.</span>
               <span>.</span>
@@ -64,7 +64,7 @@ export function ScanProgressOverlay({ url }: ScanProgressOverlayProps) {
           </h1>
 
           <p className="mt-4 max-w-2xl text-left text-lg text-white/90 md:text-xl">
-            Give us a moment while we analyze this page for predatory design
+            Give us a moment while we analyze this page for deceptive design
             patterns.
           </p>
         </div>

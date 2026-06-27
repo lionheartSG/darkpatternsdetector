@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { submitScan } from "@/app/actions/scan/submitScan";
 import { ScanProgressOverlay } from "@/components/scan/ScanProgressOverlay";
+import { TermsOfUseDialog } from "@/components/scan/TermsOfUseDialog";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
@@ -12,6 +13,7 @@ export function UrlScanForm() {
   const router = useRouter();
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [termsOpen, setTermsOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   function handleBlur() {
@@ -32,6 +34,24 @@ export function UrlScanForm() {
     event.preventDefault();
     setError(null);
 
+    if (!url.trim()) {
+      setError("Please enter a website URL.");
+      return;
+    }
+
+    try {
+      new URL(url.includes("://") ? url : `https://${url}`);
+    } catch {
+      setError("Enter a valid website URL, such as https://example.com");
+      return;
+    }
+
+    setTermsOpen(true);
+  }
+
+  function startScan() {
+    setTermsOpen(false);
+
     startTransition(async () => {
       const result = await submitScan(url);
       if (!result.ok) {
@@ -44,6 +64,12 @@ export function UrlScanForm() {
 
   return (
     <>
+      <TermsOfUseDialog
+        open={termsOpen}
+        onClose={() => setTermsOpen(false)}
+        onAccept={startScan}
+      />
+
       {isPending ? <ScanProgressOverlay url={url} /> : null}
 
       <div className="rounded-[28px] border border-border bg-white p-8 shadow-[0_20px_80px_rgba(0,0,0,0.12)] md:rounded-[34px] md:p-12 dark:bg-background dark:shadow-[0_20px_80px_rgba(0,0,0,0.35)]">
@@ -52,7 +78,7 @@ export function UrlScanForm() {
             Ready to scan a website?
           </h2>
           <p className="mt-2 font-medium text-secondary md:text-lg">
-            Paste a URL to check for predatory design patterns
+            Paste a URL to detect dark patterns and deceptive UX
           </p>
 
           <form
@@ -68,7 +94,7 @@ export function UrlScanForm() {
               onChange={(event) => setUrl(event.target.value)}
               onBlur={handleBlur}
               placeholder="https://example.com"
-              helperText="We analyze the landing page for fake urgency, hidden fees, and deceptive UX."
+              helperText="We analyze the landing page for fake urgency, hidden fees, and other dark patterns."
               error={error ?? undefined}
               disabled={isPending}
               autoComplete="url"

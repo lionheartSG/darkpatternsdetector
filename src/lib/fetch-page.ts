@@ -33,7 +33,7 @@ export async function fetchPage(url: string): Promise<FetchedPage> {
   try {
     const context = await browser.newContext({
       userAgent:
-        "Mozilla/5.0 (compatible; ScamWebsiteDetector/1.0; +https://scamwebsitedetector.local)",
+        "Mozilla/5.0 (compatible; DarkPatternDetector/1.0; +https://darkpatterndetector.local)",
       viewport: { width: 1280, height: 720 },
     });
 

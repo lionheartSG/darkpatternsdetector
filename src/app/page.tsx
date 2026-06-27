@@ -33,12 +33,12 @@ export default function HomePage() {
       <div className="relative mx-auto flex w-full max-w-5xl flex-col gap-10 px-4 py-12 sm:px-6 sm:py-16 lg:gap-14">
         <section className="max-w-3xl space-y-4">
           <h1 className="text-4xl font-semibold leading-tight tracking-tight text-white sm:text-5xl md:text-[56px]">
-            Spot predatory patterns before you trust a website
+            Spot dark patterns before you trust a website
           </h1>
           <p className="max-w-prose text-lg leading-8 text-white/90 md:text-xl">
             Paste any URL and we will analyze the page for dark patterns such as
             fake countdowns, misleading scarcity, hidden subscriptions, and
-            other tactics designed to pressure users.
+            other deceptive design tactics.
           </p>
         </section>
 
