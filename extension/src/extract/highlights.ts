@@ -1426,6 +1426,52 @@ export function clearHighlightMarkers(): void {
   }
 }
 
+export function resolveHighlightElement(
+  highlight: PageHighlight,
+): HTMLElement | null {
+  const marked = document.querySelector(
+    `[${HIGHLIGHT_ID_ATTR}="${highlight.id}"]`,
+  );
+  if (marked instanceof HTMLElement && isVisibleHighlightElement(marked)) {
+    return marked;
+  }
+
+  return resolveHighlightElementForScroll(highlight);
+}
+
+export function resolveHighlightElementForScroll(
+  highlight: PageHighlight,
+  detection?: HighlightDetection,
+): HTMLElement | null {
+  const marked = document.querySelector(
+    `[${HIGHLIGHT_ID_ATTR}="${highlight.id}"]`,
+  );
+  if (marked instanceof HTMLElement) {
+    return marked;
+  }
+
+  const evidence = highlight.evidence ?? detection?.evidence ?? "";
+  const detectionPayload: HighlightDetection = {
+    category: detection?.category ?? highlight.category,
+    patternType: detection?.patternType ?? highlight.patternType,
+    severity: detection?.severity ?? highlight.severity,
+    evidence,
+  };
+
+  const found = findElementForDetection(detectionPayload);
+  if (!(found instanceof HTMLElement)) {
+    return null;
+  }
+
+  const target = highlightTarget(found);
+  if (!(target instanceof HTMLElement)) {
+    return null;
+  }
+
+  assignHighlightId(target);
+  return target;
+}
+
 export function clearHighlightBoxes(): void {
   for (const box of document.querySelectorAll(`[${HIGHLIGHT_BOX_ATTR}]`)) {
     box.remove();

@@ -630,6 +630,8 @@ export default defineBackground(() => {
           await chrome.tabs.sendMessage(tabId, {
             type: "SCROLL_TO_HIGHLIGHT",
             highlightId: message.highlightId as string,
+            highlight: message.highlight,
+            detection: message.detection,
           });
           sendResponse({ ok: true });
         } catch {

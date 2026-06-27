@@ -3,7 +3,9 @@ import {
   clearHighlightBoxes,
   HIGHLIGHT_BOX_ATTR,
   HIGHLIGHT_ID_ATTR,
+  type HighlightDetection,
   isVisibleHighlightElement,
+  resolveHighlightElementForScroll,
 } from "../extract/highlights";
 
 const SEVERITY_COLORS: Record<
@@ -14,6 +16,79 @@ const SEVERITY_COLORS: Record<
   MEDIUM: { border: "#D97706", background: "rgba(217, 119, 6, 0.14)" },
   LOW: { border: "#2563EB", background: "rgba(37, 99, 235, 0.12)" },
 };
+
+const SCROLL_MARGIN_PX = 72;
+
+function scrollElementIntoView(element: HTMLElement): void {
+  if (element.matches("a, button, input, textarea, select, [tabindex]")) {
+    try {
+      element.focus({ preventScroll: true });
+    } catch {
+      // Some elements cannot be focused.
+    }
+  }
+
+  let parent: Element | null = element.parentElement;
+  while (parent) {
+    if (parent === document.body || parent === document.documentElement) {
+      break;
+    }
+
+    if (!(parent instanceof HTMLElement)) {
+      parent = parent.parentElement;
+      continue;
+    }
+
+    const style = window.getComputedStyle(parent);
+    const overflowY = style.overflowY;
+    const canScrollY =
+      overflowY === "auto" ||
+      overflowY === "scroll" ||
+      overflowY === "overlay";
+
+    if (canScrollY && parent.scrollHeight > parent.clientHeight + 1) {
+      const parentRect = parent.getBoundingClientRect();
+      const elementRect = element.getBoundingClientRect();
+      const offset =
+        elementRect.top -
+        parentRect.top -
+        parent.clientHeight / 2 +
+        elementRect.height / 2;
+
+      if (Math.abs(offset) > 4) {
+        parent.scrollTo({
+          top: parent.scrollTop + offset,
+          behavior: "smooth",
+        });
+      }
+    }
+
+    parent = parent.parentElement;
+  }
+
+  try {
+    element.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+      inline: "nearest",
+    });
+  } catch {
+    element.scrollIntoView();
+  }
+
+  const rect = element.getBoundingClientRect();
+  const targetTop =
+    rect.top +
+    window.scrollY -
+    window.innerHeight / 2 +
+    rect.height / 2 -
+    SCROLL_MARGIN_PX / 2;
+
+  window.scrollTo({
+    top: Math.max(0, targetTop),
+    behavior: "smooth",
+  });
+}
 
 export class HighlightOverlay {
   private highlights: PageHighlight[] = [];
@@ -39,19 +114,78 @@ export class HighlightOverlay {
     }
   }
 
-  scrollToHighlight(highlightId: string): void {
-    const element = document.querySelector(
+  scrollToHighlight(
+    highlightId: string,
+    highlight?: PageHighlight,
+    detection?: HighlightDetection,
+  ): boolean {
+    this.visible = true;
+    this.ensureBindings();
+
+    const record =
+      highlight ??
+      this.highlights.find((item) => item.id === highlightId) ??
+      null;
+
+    let element: HTMLElement | null = null;
+    let activeId = highlightId;
+
+    const marked = document.querySelector(
       `[${HIGHLIGHT_ID_ATTR}="${highlightId}"]`,
     );
-    if (!(element instanceof HTMLElement)) {
-      return;
+    if (marked instanceof HTMLElement) {
+      element = marked;
     }
 
-    this.activeHighlightId = highlightId;
-    element.scrollIntoView({ behavior: "smooth", block: "center" });
-    window.setTimeout(() => {
-      this.render();
-    }, 350);
+    if (!element && record) {
+      element = resolveHighlightElementForScroll(record, detection);
+      if (element) {
+        activeId = element.getAttribute(HIGHLIGHT_ID_ATTR) ?? highlightId;
+      }
+    }
+
+    if (!element && detection) {
+      element = resolveHighlightElementForScroll(
+        {
+          id: highlightId,
+          category: detection.category as PageHighlight["category"],
+          patternType: detection.patternType,
+          severity: detection.severity,
+          label: "Pressure cue",
+          evidence: detection.evidence,
+        },
+        detection,
+      );
+      if (element) {
+        activeId = element.getAttribute(HIGHLIGHT_ID_ATTR) ?? highlightId;
+      }
+    }
+
+    if (!element) {
+      return false;
+    }
+
+    this.activeHighlightId = activeId;
+
+    if (record) {
+      if (activeId !== record.id) {
+        this.highlights = this.highlights.map((item) =>
+          item.id === record.id ? { ...item, id: activeId } : item,
+        );
+      }
+      if (!this.highlights.some((item) => item.id === activeId)) {
+        this.highlights = [...this.highlights, { ...record, id: activeId }];
+      }
+    }
+
+    scrollElementIntoView(element);
+
+    this.render();
+    window.setTimeout(() => this.render(), 50);
+    window.setTimeout(() => this.render(), 350);
+    window.setTimeout(() => this.render(), 700);
+
+    return true;
   }
 
   private ensureBindings(): void {

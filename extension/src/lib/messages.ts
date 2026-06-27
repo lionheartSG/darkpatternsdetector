@@ -80,6 +80,13 @@ export type ScrollToHighlightMessage = {
   type: "SCROLL_TO_HIGHLIGHT";
   tabId?: number;
   highlightId: string;
+  highlight?: PageHighlight;
+  detection?: {
+    category: string;
+    patternType: string;
+    severity: PageHighlight["severity"];
+    evidence: string;
+  };
 };
 
 export type ClearPageHighlightsMessage = {

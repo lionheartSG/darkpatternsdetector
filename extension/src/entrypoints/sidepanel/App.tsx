@@ -282,7 +282,15 @@ export function SidePanelApp() {
     });
   };
 
-  const handleScrollToHighlight = async (highlight: PageHighlight) => {
+  const handleScrollToHighlight = async (
+    highlight: PageHighlight,
+    detection: {
+      category: string;
+      patternType: string;
+      severity: PageHighlight["severity"];
+      evidence: string;
+    },
+  ) => {
     if (!activeTabId) return;
 
     setHighlightsVisible(true);
@@ -295,6 +303,8 @@ export function SidePanelApp() {
       type: "SCROLL_TO_HIGHLIGHT",
       tabId: activeTabId,
       highlightId: highlight.id,
+      highlight,
+      detection,
     });
   };
 
@@ -409,10 +419,16 @@ export function SidePanelApp() {
             <div key={category} className="card">
               <h3>{category.replaceAll("_", " ")}</h3>
               {detections.map((detection) => {
-                const highlight = matchHighlightToDetection(
+                const matched = matchHighlightToDetection(
                   highlights,
                   detection,
                 );
+                const highlight = matched
+                  ? {
+                      ...matched,
+                      evidence: matched.evidence ?? detection.evidence,
+                    }
+                  : null;
 
                 return (
                 <article key={detection.id} className="finding">
@@ -427,7 +443,12 @@ export function SidePanelApp() {
                       type="button"
                       className="button-link"
                       onClick={() => {
-                        void handleScrollToHighlight(highlight);
+                        void handleScrollToHighlight(highlight, {
+                          category: detection.category,
+                          patternType: detection.patternType,
+                          severity: detection.severity,
+                          evidence: detection.evidence,
+                        });
                       }}
                     >
                       Show on page

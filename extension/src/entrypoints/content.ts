@@ -101,7 +101,13 @@ export default defineContentScript({
       }
 
       if (message?.type === "SCROLL_TO_HIGHLIGHT") {
-        overlay.scrollToHighlight(message.highlightId as string);
+        const highlight = message.highlight as PageHighlight | undefined;
+        const detection = message.detection as HighlightDetection | undefined;
+        overlay.scrollToHighlight(
+          message.highlightId as string,
+          highlight,
+          detection,
+        );
       }
     });
 

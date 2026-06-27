@@ -202,6 +202,8 @@ export async function submitScan(
         ? error.message
         : "Unable to analyze this website right now.";
 
+    console.error("[submitScan] scan failed:", message, error);
+
     await prisma.scan.update({
       where: { id: scan.id },
       data: {

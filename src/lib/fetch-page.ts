@@ -71,6 +71,8 @@ async function getBrowser() {
     const chromium = (await import("@sparticuz/chromium")).default;
     const { chromium: playwrightChromium } = await import("playwright-core");
 
+    chromium.setGraphicsMode = false;
+
     return playwrightChromium.launch({
       args: [...chromium.args, ...STEALTH_LAUNCH_ARGS],
       executablePath: await chromium.executablePath(),

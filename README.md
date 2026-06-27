@@ -63,7 +63,11 @@ Without `OPENAI_API_KEY`, the app falls back to heuristic-only analysis.
 
 - Set `DATABASE_URL` and `OPENAI_API_KEY` in project environment variables.
 - For Playwright on serverless, the app uses `@sparticuz/chromium` + `playwright-core`.
-- Set route `maxDuration` to 60 seconds for scan actions.
+- `next.config.ts` marks those packages as `serverExternalPackages` so Chromium binaries are not bundled incorrectly.
+- The home page exports `maxDuration = 60` so the `submitScan` server action can finish page fetch + AI analysis (Vercel default is 10s without this).
+- **Vercel Pro** (or higher) is required for function durations above 10 seconds on most plans.
+
+After deploying, if a scan still fails, open the failed scan at `/scan/[id]` — the stored `errorMessage` and Vercel function logs show the underlying cause.
 
 ## Scripts
 
