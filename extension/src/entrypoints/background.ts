@@ -29,6 +29,18 @@ const debounceTimers = new Map<number, ReturnType<typeof setTimeout>>();
 const inFlightUrls = new Set<string>();
 const pendingHighlights = new Map<number, PageHighlight[]>();
 const DEBOUNCE_MS = 2000;
+const ANALYSIS_TIMEOUT_MS = 90_000;
+
+function withAnalysisTimeout<T>(promise: Promise<T>): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error("Analysis timed out."));
+      }, ANALYSIS_TIMEOUT_MS);
+    }),
+  ]);
+}
 
 function notifyTabReportUpdated(tabId: number): void {
   void chrome.runtime
@@ -214,6 +226,10 @@ async function hydrateTabFromCache(
 ): Promise<boolean> {
   const existing = await getTabReport(tabId);
 
+  if (existing?.status === "analyzing") {
+    return true;
+  }
+
   let cached = await getUrlReportCache(url);
   if (!cached) {
     cached = await fetchCachedReportFromBackend(url);
@@ -291,21 +307,33 @@ async function runAnalysis(
   const highlights = pendingHighlights.get(tabId) ?? [];
 
   try {
-    const result = await analyzeWithBackend(
-      {
-        url: payload.url,
-        pageTitle: payload.pageTitle,
-        visibleText: payload.visibleText,
-        interactiveHtml: payload.interactiveHtml,
-        pageType: payload.pageType,
-        heuristicSignals,
-      },
-      force,
+    const result = await withAnalysisTimeout(
+      analyzeWithBackend(
+        {
+          url: payload.url,
+          pageTitle: payload.pageTitle,
+          visibleText: payload.visibleText,
+          interactiveHtml: payload.interactiveHtml,
+          pageType: payload.pageType,
+          heuristicSignals,
+        },
+        force,
+      ),
     );
 
     await setUrlReportCache(payload.url, result.scan);
     await applyCachedReport(tabId, result.scan, highlights);
   } catch {
+    const cached =
+      (await getUrlReportCache(payload.url)) ??
+      (await fetchCachedReportFromBackend(payload.url));
+
+    if (cached) {
+      await setUrlReportCache(payload.url, cached);
+      await applyCachedReport(tabId, cached, highlights);
+      return;
+    }
+
     const fallback = buildLocalFallbackReport(
       payload.url,
       payload.pageTitle,

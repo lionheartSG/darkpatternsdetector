@@ -37,6 +37,7 @@ function mergeReportState(
   previous: TabReportState,
   next: TabReportState | null,
   rescanStartedAt: number | null,
+  rescanBaselineScanId: string | null,
 ): TabReportState {
   const resolved = next ?? { status: "idle" as const };
 
@@ -63,6 +64,13 @@ function mergeReportState(
   }
 
   if (resolved.status === "complete") {
+    if (
+      rescanBaselineScanId &&
+      resolved.report.id !== rescanBaselineScanId
+    ) {
+      return resolved;
+    }
+
     const completedAt = resolved.report.completedAt;
     if (
       rescanStartedAt &&
@@ -96,6 +104,13 @@ export function SidePanelApp() {
   const [highlightsVisible, setHighlightsVisible] = useState(true);
   const [activeTabId, setActiveTabId] = useState<number | null>(null);
   const rescanStartedAtRef = useRef<number | null>(null);
+  const rescanBaselineScanIdRef = useRef<string | null>(null);
+  const trackedTabUrlRef = useRef<string>("");
+
+  const clearRescanTracking = useCallback(() => {
+    rescanStartedAtRef.current = null;
+    rescanBaselineScanIdRef.current = null;
+  }, []);
 
   const refresh = useCallback(async () => {
     const [tab] = await chrome.tabs.query({
@@ -104,25 +119,47 @@ export function SidePanelApp() {
     });
     if (!tab?.id) return;
 
+    const nextTabUrl = tab.url ?? "";
+    if (trackedTabUrlRef.current !== nextTabUrl) {
+      trackedTabUrlRef.current = nextTabUrl;
+      clearRescanTracking();
+    }
+
     setActiveTabId(tab.id);
-    setTabUrl(tab.url ?? "");
+    setTabUrl(nextTabUrl);
     const settings = await getSettings();
     setTermsAccepted(Boolean(settings.termsAcceptedAt));
 
     const state = await getTabReport(tab.id);
     setReportState((previous) =>
-      mergeReportState(previous, state, rescanStartedAtRef.current),
+      mergeReportState(
+        previous,
+        state,
+        rescanStartedAtRef.current,
+        rescanBaselineScanIdRef.current,
+      ),
     );
 
-    if (
-      state?.status === "complete" &&
-      rescanStartedAtRef.current &&
-      state.report.completedAt &&
-      new Date(state.report.completedAt).getTime() >= rescanStartedAtRef.current
-    ) {
-      rescanStartedAtRef.current = null;
+    if (state?.status !== "complete" || !rescanStartedAtRef.current) {
+      return;
     }
-  }, []);
+
+    if (
+      rescanBaselineScanIdRef.current &&
+      state.report.id !== rescanBaselineScanIdRef.current
+    ) {
+      clearRescanTracking();
+      return;
+    }
+
+    if (
+      state.report.completedAt &&
+      new Date(state.report.completedAt).getTime() >=
+        rescanStartedAtRef.current
+    ) {
+      clearRescanTracking();
+    }
+  }, [clearRescanTracking]);
 
   useEffect(() => {
     void refresh();
@@ -185,6 +222,8 @@ export function SidePanelApp() {
     if (!tab?.id) return;
 
     rescanStartedAtRef.current = Date.now();
+    rescanBaselineScanIdRef.current =
+      reportState.status === "complete" ? reportState.report.id : null;
     setReportState({ status: "analyzing" });
 
     const response = (await chrome.runtime.sendMessage({
@@ -193,7 +232,7 @@ export function SidePanelApp() {
     })) as { ok?: boolean; error?: string } | undefined;
 
     if (!response?.ok) {
-      rescanStartedAtRef.current = null;
+      clearRescanTracking();
       const state = await getTabReport(tab.id);
       setReportState(
         state ?? {
