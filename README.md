@@ -1,4 +1,4 @@
-# Scam Website Detector
+# Dark Patterns Detector
 
 Analyze websites for predatory design patterns — fake urgency, misleading scarcity, hidden fees, and other dark UX tactics.
 
