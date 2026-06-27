@@ -1,0 +1,79 @@
+# Scam Website Detector
+
+Analyze websites for predatory design patterns — fake urgency, misleading scarcity, hidden fees, and other dark UX tactics.
+
+## Stack
+
+- **Next.js 16** (App Router, Server Actions)
+- **Prisma** + **Prisma Postgres** (PostgreSQL)
+- **Vercel AI SDK** for structured AI analysis
+- **Playwright** for JavaScript-rendered page fetching
+
+## Setup
+
+### 1. Install dependencies
+
+```bash
+npm install
+npx playwright install chromium
+```
+
+### 2. Provision a database
+
+Create a free temporary Prisma Postgres database (no account required):
+
+```bash
+npx create-db@latest
+```
+
+Copy the connection string into `.env`:
+
+```env
+DATABASE_URL="postgres://...@db.prisma.io:5432/postgres?sslmode=require"
+OPENAI_API_KEY="sk-..."
+# Optional:
+# AI_MODEL=gpt-4o
+```
+
+**Note:** Unclaimed databases expire after 24 hours. Use the claim URL from the CLI output to keep it permanently on a free Prisma account.
+
+### 3. Run migrations
+
+```bash
+npx prisma migrate dev
+```
+
+### 4. Start the dev server
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+## How it works
+
+1. User submits a URL on the home page.
+2. `submitScan` server action validates the URL (including SSRF checks), fetches the page with Playwright, runs heuristic pre-scan, then AI analysis via Vercel AI SDK.
+3. Results are stored in Prisma Postgres and displayed at `/scan/[id]`.
+
+Without `OPENAI_API_KEY`, the app falls back to heuristic-only analysis.
+
+## Deployment (Vercel)
+
+- Set `DATABASE_URL` and `OPENAI_API_KEY` in project environment variables.
+- For Playwright on serverless, the app uses `@sparticuz/chromium` + `playwright-core`.
+- Set route `maxDuration` to 60 seconds for scan actions.
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start development server |
+| `npm run build` | Generate Prisma client and build |
+| `npm run lint` | Run Biome checks |
+| `npx prisma studio` | Open database GUI |
+
+## Disclaimer
+
+Automated analysis only. Results are not legal, financial, or security advice.

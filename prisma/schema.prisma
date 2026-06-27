@@ -1,0 +1,48 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ScanStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model Scan {
+  id            String      @id @default(cuid())
+  url           String
+  normalizedUrl String
+  status        ScanStatus  @default(PENDING)
+  riskScore     Int?
+  summary       String?
+  pageTitle     String?
+  finalUrl      String?
+  errorMessage  String?
+  createdAt     DateTime    @default(now())
+  completedAt   DateTime?
+  detections    Detection[]
+}
+
+model Detection {
+  id          String   @id @default(cuid())
+  scanId      String
+  scan        Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  category    String
+  patternType String
+  severity    Severity
+  description String
+  evidence    String
+  confidence  Float
+}
