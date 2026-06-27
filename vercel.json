@@ -3,11 +3,11 @@
   "functions": {
     "src/app/page.tsx": {
       "maxDuration": 60,
-      "memory": 3008
+      "memory": 2048
     },
     "src/app/scan/[id]/page.tsx": {
       "maxDuration": 60,
-      "memory": 3008
+      "memory": 2048
     },
     "src/app/api/extension/analyze/route.ts": {
       "maxDuration": 60,

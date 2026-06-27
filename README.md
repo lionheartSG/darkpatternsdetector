@@ -67,7 +67,7 @@ This project uses:
 
 - **`playwright-core`** — lightweight driver (no bundled browser)
 - **`@sparticuz/chromium-min`** — minimal package; downloads Chromium from a remote tarball at runtime
-- **`vercel.json`** — `maxDuration: 60`, `memory: 3008` on scan routes
+- **`vercel.json`** — `maxDuration: 60`, `memory: 2048` on scan routes (Hobby plan max)
 - **`next.config.ts`** — `serverExternalPackages` so binaries are not bundled incorrectly
 - **`src/app/page.tsx`** — `runtime = "nodejs"`, `maxDuration = 60`
 
@@ -83,7 +83,7 @@ This project uses:
 
 - First scan on a cold function downloads ~50MB Chromium — can take 10–20s extra
 - Scans need up to ~60s total (`maxDuration`)
-- Set function memory to **3008 MB** in Vercel dashboard if Fluid Compute ignores `vercel.json` memory
+- **Hobby plan:** max **2048 MB** memory per function. **Pro plan:** up to 3008 MB if scans need more headroom for Chromium
 - If GitHub download fails or times out, host the `.tar` pack on **Vercel Blob** and set `CHROMIUM_REMOTE_EXEC_PATH` to that URL
 
 ### Local development
