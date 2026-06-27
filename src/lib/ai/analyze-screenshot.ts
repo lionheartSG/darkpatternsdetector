@@ -65,7 +65,7 @@ Report visible pressure cues with evidence from the image. This is not a legal, 
           {
             type: "image",
             image: imageBuffer,
-            mimeType: input.mimeType,
+            mediaType: input.mimeType,
           },
         ],
       },

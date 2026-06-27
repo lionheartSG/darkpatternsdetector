@@ -84,15 +84,12 @@ export async function submitScan(
   });
 
   try {
-    const screenshotPayload = input?.userScreenshotBase64
-      ? parseUserScreenshot(
-          input.userScreenshotBase64,
-          input.screenshotMimeType,
-        )
-      : null;
-
     if (input?.userScreenshotBase64) {
-      if (!screenshotPayload?.ok) {
+      const screenshotPayload = parseUserScreenshot(
+        input.userScreenshotBase64,
+        input.screenshotMimeType,
+      );
+      if (!screenshotPayload.ok) {
         return { ok: false, error: screenshotPayload.error };
       }
 
