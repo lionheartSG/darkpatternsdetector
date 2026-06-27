@@ -4,7 +4,11 @@ const PATTERN_TYPE_GROUPS: readonly string[][] = [
   ["RepeatedPopupOrStickyBanner", "RepeatedPrompt", "StickyPressureBanner"],
   ["ActivityNotifications", "ActivityNotification", "LiveActivityMessage"],
   ["RequiredEnrollment", "Confirmshaming"],
+  ["LimitedTimeMessage", "LimitedTimeOffer", "LimitedTimePromotion"],
+  ["MisleadingPrice", "DripPricing", "UnclearDiscount"],
 ];
+
+const STICKY_OVERLAY_CATEGORIES = new Set(["OBSTRUCTION", "NAGGING"]);
 
 export function patternTypesMatch(a: string, b: string): boolean {
   if (a === b) {
@@ -27,14 +31,32 @@ function normalizeEvidence(value: string): string {
 function evidencePhrases(evidence: string): string[] {
   const phrases = new Set<string>();
 
-  const quoted = evidence.match(/["“'](.+?)["”']/g);
-  if (quoted) {
-    for (const match of quoted) {
-      const inner = match.slice(1, -1).trim();
-      if (inner.length >= 3) {
-        phrases.add(inner);
+  const quoted = evidence.matchAll(/["“'](.+?)["”']/g);
+  for (const match of quoted) {
+    const inner = match[1].trim();
+    if (inner.length >= 3) {
+      phrases.add(inner);
+      for (const segment of inner.split("|")) {
+        const part = segment.trim();
+        if (part.length >= 3) {
+          phrases.add(part);
+        }
       }
     }
+  }
+
+  for (const match of evidence.matchAll(/`([^`]+)`/g)) {
+    const inner = match[1].trim();
+    if (inner.length >= 3) {
+      phrases.add(inner);
+    }
+  }
+
+  const visibleText = evidence.match(
+    /Visible text:\s*["“']?([^"”'\n.]+?)["”']?(?:\.|$|\n)/i,
+  )?.[1];
+  if (visibleText?.trim()) {
+    phrases.add(visibleText.trim());
   }
 
   const cleaned = evidence.replace(/\s+/g, " ").trim();
@@ -116,6 +138,39 @@ export function matchHighlightToDetection(
           evidenceOverlaps(highlight.evidence, detection.evidence),
       ) ?? byCategory[0]
     );
+  }
+
+  if (STICKY_OVERLAY_CATEGORIES.has(detection.category)) {
+    const stickyHighlight = highlights.find(
+      (highlight) =>
+        STICKY_OVERLAY_CATEGORIES.has(highlight.category) ||
+        patternTypesMatch(highlight.patternType, "StickyPressureBanner") ||
+        patternTypesMatch(highlight.patternType, "RepeatedPopupOrStickyBanner"),
+    );
+    if (stickyHighlight) {
+      return stickyHighlight;
+    }
+  }
+
+  if (detection.category === "FORCED_ACTION") {
+    const promoHighlight = highlights.find(
+      (highlight) =>
+        highlight.category === "FORCED_ACTION" ||
+        highlight.category === "NAGGING" ||
+        /sticky|promo|banner|ticker/i.test(highlight.label),
+    );
+    if (promoHighlight) {
+      return promoHighlight;
+    }
+  }
+
+  const byEvidenceOnly = highlights.find(
+    (highlight) =>
+      highlight.evidence &&
+      evidenceOverlaps(highlight.evidence, detection.evidence),
+  );
+  if (byEvidenceOnly) {
+    return byEvidenceOnly;
   }
 
   return undefined;

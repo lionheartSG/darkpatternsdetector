@@ -50,6 +50,9 @@ const URGENCY_PATTERNS = [
   /act now/i,
   /hurry/i,
   /don['']?t miss out/i,
+  /get \d+\s*%\s*off/i,
+  /\boff now\b/i,
+  /\d+\s*%\s*off now/i,
 ];
 
 const SCARCITY_PATTERNS = [
@@ -73,6 +76,8 @@ const SOCIAL_PROOF_PATTERNS = [
   /someone just purchased/i,
   /recent(ly)? purchased/i,
   /\d+ (people|users|customers) (are )?(viewing|watching)/i,
+  /sign up for .* (updates|newsletter)/i,
+  /\bspecials\b/i,
 ];
 
 const CONFIRMSHAMING_PATTERNS = [
@@ -527,9 +532,10 @@ function collectStickyHighlights(
     }
 
     if (
-      /class="[^"]*(modal|popup|overlay|sticky-banner)[^"]*"/i.test(
+      /class="[^"]*(modal|popup|popover|overlay|widget|sticky-banner)[^"]*"/i.test(
         element.outerHTML,
-      )
+      ) ||
+      element.matches("sticky-header, [class*='sticky-header']")
     ) {
       addCandidate(
         element,
@@ -773,7 +779,7 @@ function findElementContainingPhrase(phrase: string): HTMLElement | null {
   let bestArea = Number.POSITIVE_INFINITY;
 
   for (const element of document.querySelectorAll<HTMLElement>(
-    "p, span, div, button, a, label, li, h1, h2, h3, h4, td, strong, em, small, del, s",
+    TEXT_SEARCH_SELECTORS,
   )) {
     if (!isVisibleHighlightElement(element)) {
       continue;
@@ -900,16 +906,36 @@ function findElementByScarcityEvidence(evidence: string): HTMLElement | null {
 function evidencePhrases(evidence: string): string[] {
   const phrases = new Set<string>();
 
-  const quoted = evidence.match(/["“'](.+?)["”']/)?.[1];
-  if (quoted?.trim()) {
-    const trimmed = quoted.trim();
-    phrases.add(trimmed);
-    for (const segment of trimmed.split("|")) {
-      const part = segment.trim();
-      if (part.length >= 3) {
-        phrases.add(part);
+  for (const match of evidence.matchAll(/["“'](.+?)["”']/g)) {
+    const trimmed = match[1].trim();
+    if (trimmed.length >= 3) {
+      phrases.add(trimmed);
+      for (const segment of trimmed.split("|")) {
+        const part = segment.trim();
+        if (part.length >= 3) {
+          phrases.add(part);
+        }
       }
     }
+  }
+
+  for (const match of evidence.matchAll(/`([^`]+)`/g)) {
+    const trimmed = match[1].trim();
+    if (trimmed.length >= 3) {
+      phrases.add(trimmed);
+    }
+  }
+
+  const visibleText = evidence.match(
+    /Visible text:\s*["“']?([^"”'\n.]+?)["”']?(?:\.|$|\n)/i,
+  )?.[1];
+  if (visibleText?.trim()) {
+    phrases.add(visibleText.trim());
+  }
+
+  const snippet = evidence.match(/Snippet:\s*(`[^`]+`|<[^>\n]+>)/i)?.[1];
+  if (snippet?.trim()) {
+    phrases.add(snippet.trim().replace(/^`|`$/g, ""));
   }
 
   const fallback = evidenceSearchPhrase(evidence);
@@ -948,10 +974,132 @@ function findElementByEvidence(evidence: string): HTMLElement | null {
 const POPUP_SELECTORS = [
   '[role="dialog"]',
   '[class*="modal"]',
+  '[class*="Modal"]',
   '[class*="popup"]',
+  '[class*="Popup"]',
+  '[class*="popover"]',
+  '[class*="Popover"]',
   '[class*="overlay"]',
+  '[class*="Overlay"]',
+  '[class*="widget"]',
+  '[class*="Widget"]',
   '[class*="newsletter"]',
+  '[class*="sticky-banner"]',
+  '[class*="announcement"]',
+  "sticky-header",
+  '[class*="sticky-header"]',
 ].join(",");
+
+const STICKY_PROMO_SELECTORS = [
+  "sticky-header",
+  '[class*="sticky-header"]',
+  '[class*="announcement-bar"]',
+  '[class*="promo-bar"]',
+  '[class*="promo-ticker"]',
+  '[class*="ticker"]',
+  "header[class*='sticky']",
+  '[class*="header--sticky"]',
+].join(",");
+
+const TEXT_SEARCH_SELECTORS =
+  "p, span, div, button, a, label, li, h1, h2, h3, h4, td, strong, em, small, del, s, sticky-header, header, nav, section, [class*='banner'], [class*='ticker'], [class*='popover'], [class*='widget']";
+
+const OVERLAY_CLASS_HINT =
+  /modal|popup|popover|overlay|widget|banner|sticky|newsletter|close|ticker|announcement/i;
+
+function extractClassFragmentsFromSnippet(snippet: string): string[] {
+  const fragments = new Set<string>();
+
+  for (const match of snippet.matchAll(/class="([^"]+)"/gi)) {
+    for (const token of match[1].split(/\s+/)) {
+      const trimmed = token.trim();
+      if (trimmed.length < 4) {
+        continue;
+      }
+      fragments.add(trimmed);
+      for (const part of trimmed.split("__")) {
+        if (part.length >= 4) {
+          fragments.add(part);
+        }
+      }
+    }
+  }
+
+  return [...fragments];
+}
+
+function findElementByClassFragment(fragment: string): HTMLElement | null {
+  const needle = fragment.toLowerCase();
+  if (needle.length < 4) {
+    return null;
+  }
+
+  let best: HTMLElement | null = null;
+  let bestArea = Number.POSITIVE_INFINITY;
+
+  for (const element of document.querySelectorAll<HTMLElement>("[class]")) {
+    const className = element.className.toLowerCase();
+    if (!className.includes(needle)) {
+      continue;
+    }
+    if (!isVisibleHighlightElement(element)) {
+      continue;
+    }
+
+    const rect = element.getBoundingClientRect();
+    const area = rect.width * rect.height;
+    if (area > 0 && area < bestArea) {
+      best = element;
+      bestArea = area;
+    }
+  }
+
+  return best;
+}
+
+function findElementFromHtmlSnippet(snippet: string): HTMLElement | null {
+  for (const fragment of extractClassFragmentsFromSnippet(snippet)) {
+    const element = findElementByClassFragment(fragment);
+    if (element) {
+      return element;
+    }
+  }
+
+  const tagMatch = snippet.match(/^<\s*([a-z][a-z0-9-]*)/i);
+  if (tagMatch) {
+    for (const element of document.querySelectorAll<HTMLElement>(tagMatch[1])) {
+      if (isVisibleHighlightElement(element)) {
+        return element;
+      }
+    }
+  }
+
+  return null;
+}
+
+function isOverlayLikeElement(element: HTMLElement): boolean {
+  const className = element.className.toLowerCase();
+  const html = element.outerHTML.toLowerCase();
+  return (
+    OVERLAY_CLASS_HINT.test(className) ||
+    OVERLAY_CLASS_HINT.test(html) ||
+    element.matches(
+      "sticky-header, [class*='sticky-header'], [role='dialog'], [class*='popover'], [class*='widget']",
+    )
+  );
+}
+
+function findStructuralStickyPromoElement(): HTMLElement | null {
+  for (const element of document.querySelectorAll<HTMLElement>(
+    STICKY_PROMO_SELECTORS,
+  )) {
+    if (isVisibleHighlightElement(element)) {
+      return element;
+    }
+  }
+
+  return null;
+}
 
 function findStructuralPopupElement(): HTMLElement | null {
   for (const element of document.querySelectorAll<HTMLElement>(POPUP_SELECTORS)) {
@@ -959,6 +1107,9 @@ function findStructuralPopupElement(): HTMLElement | null {
       return element;
     }
   }
+
+  let bestOverlay: HTMLElement | null = null;
+  let bestOverlayArea = Number.POSITIVE_INFINITY;
 
   for (const element of document.querySelectorAll<HTMLElement>("*")) {
     const style = window.getComputedStyle(element);
@@ -970,15 +1121,46 @@ function findStructuralPopupElement(): HTMLElement | null {
     }
 
     const text = (element.innerText ?? "").trim();
-    if (text.length === 0 || text.length > 500) {
+    if (text.length > 500) {
       continue;
     }
-    if (isVisibleHighlightElement(element)) {
+    if (!isVisibleHighlightElement(element)) {
+      continue;
+    }
+
+    if (isOverlayLikeElement(element)) {
+      const rect = element.getBoundingClientRect();
+      const area = rect.width * rect.height;
+      if (area > 0 && area < bestOverlayArea) {
+        bestOverlay = element;
+        bestOverlayArea = area;
+      }
+      continue;
+    }
+
+    if (!bestOverlay) {
       return element;
     }
   }
 
-  return null;
+  return bestOverlay;
+}
+
+function isStickyOverlayDetection(detection: HighlightDetection): boolean {
+  return (
+    detection.category === "OBSTRUCTION" ||
+    detection.category === "NAGGING" ||
+    patternTypesMatch(detection.patternType, "StickyPressureBanner") ||
+    patternTypesMatch(detection.patternType, "RepeatedPopupOrStickyBanner")
+  );
+}
+
+function isStickyPromoDetection(detection: HighlightDetection): boolean {
+  return (
+    detection.category === "FORCED_ACTION" &&
+    (/sticky|ticker|promo|banner|header/i.test(detection.evidence) ||
+      /sticky|promo|ticker|banner/i.test(detection.patternType))
+  );
 }
 
 function findStructuralEnrollmentElement(): HTMLElement | null {
@@ -1055,6 +1237,16 @@ function findStructuralSocialProofElement(): HTMLElement | null {
 function findElementForDetection(
   detection: HighlightDetection,
 ): HTMLElement | null {
+  const snippetMatch =
+    detection.evidence.match(/Snippet:\s*`([^`]+)`/i) ??
+    detection.evidence.match(/Snippet:\s*(<[^>\n]+>)/i);
+  if (snippetMatch) {
+    const fromSnippet = findElementFromHtmlSnippet(snippetMatch[1]);
+    if (fromSnippet) {
+      return fromSnippet;
+    }
+  }
+
   if (detection.category === "PRICING_DECEPTION") {
     return (
       findElementByPricingEvidence(detection.evidence) ??
@@ -1066,6 +1258,20 @@ function findElementForDetection(
     return (
       findElementByScarcityEvidence(detection.evidence) ??
       findStructuralScarcityElement()
+    );
+  }
+
+  if (isStickyOverlayDetection(detection)) {
+    return (
+      findElementByEvidence(detection.evidence) ??
+      findStructuralPopupElement()
+    );
+  }
+
+  if (isStickyPromoDetection(detection)) {
+    return (
+      findElementByEvidence(detection.evidence) ??
+      findStructuralStickyPromoElement()
     );
   }
 
@@ -1090,7 +1296,9 @@ function findElementForDetection(
 
   if (detection.category === "SOCIAL_PROOF") {
     return (
-      findStructuralReviewElement() ?? findStructuralSocialProofElement()
+      findElementByEvidence(detection.evidence) ??
+      findStructuralReviewElement() ??
+      findStructuralSocialProofElement()
     );
   }
 
@@ -1106,6 +1314,8 @@ function findElementForDetection(
         return element;
       }
     }
+
+    return findElementByEvidence(detection.evidence);
   }
 
   return null;

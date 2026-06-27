@@ -180,27 +180,30 @@ async function syncHighlightsToTab(
   visible: boolean,
   detections: ExtensionAnalyzeResponse["scan"]["detections"] = [],
   reportId?: string,
-): Promise<void> {
+): Promise<PageHighlight[]> {
   try {
     if (!visible) {
       await chrome.tabs.sendMessage(tabId, { type: "CLEAR_PAGE_HIGHLIGHTS" });
-      return;
+      return [];
     }
 
     if (highlights.length === 0 && detections.length === 0) {
       await chrome.tabs.sendMessage(tabId, { type: "CLEAR_PAGE_HIGHLIGHTS" });
-      return;
+      return [];
     }
 
-    await chrome.tabs.sendMessage(tabId, {
+    const response = (await chrome.tabs.sendMessage(tabId, {
       type: "SET_PAGE_HIGHLIGHTS",
       highlights,
       detections,
       visible: true,
       reportId,
-    });
+    })) as { highlights?: PageHighlight[] } | undefined;
+
+    return response?.highlights ?? highlights;
   } catch {
     // Content script may not be ready on this tab.
+    return highlights;
   }
 }
 
@@ -211,13 +214,21 @@ async function applyCachedReport(
 ): Promise<void> {
   await updateTabReport(tabId, { status: "complete", report, highlights });
   await updateBadge(tabId, report.concernLevel);
-  await syncHighlightsToTab(
+  const enrichedHighlights = await syncHighlightsToTab(
     tabId,
     highlights,
     highlights.length > 0 || report.detections.length > 0,
     report.detections,
     report.id,
   );
+
+  if (enrichedHighlights.length > 0) {
+    await updateTabReport(tabId, {
+      status: "complete",
+      report,
+      highlights: enrichedHighlights,
+    });
+  }
 }
 
 async function hydrateTabFromCache(
@@ -392,13 +403,20 @@ export default defineBackground(() => {
         const highlights = state.highlights ?? [];
         const detections = state.report.detections;
         if (highlights.length > 0 || detections.length > 0) {
-          await syncHighlightsToTab(
+          const enrichedHighlights = await syncHighlightsToTab(
             activeInfo.tabId,
             highlights,
             true,
             detections,
             state.report.id,
           );
+
+          if (enrichedHighlights.length > 0) {
+            await updateTabReport(activeInfo.tabId, {
+              ...state,
+              highlights: enrichedHighlights,
+            });
+          }
         }
       }
     })();
@@ -571,13 +589,25 @@ export default defineBackground(() => {
         const detections =
           state?.status === "complete" ? state.report.detections : [];
 
-        await syncHighlightsToTab(
+        const enrichedHighlights = await syncHighlightsToTab(
           tabId,
           highlights,
           Boolean(message.visible),
           detections,
           state?.status === "complete" ? state.report.id : undefined,
         );
+
+        if (
+          state?.status === "complete" &&
+          Boolean(message.visible) &&
+          enrichedHighlights.length > 0
+        ) {
+          await updateTabReport(tabId, {
+            ...state,
+            highlights: enrichedHighlights,
+          });
+        }
+
         sendResponse({ ok: true });
       })();
 

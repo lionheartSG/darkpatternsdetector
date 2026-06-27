@@ -63,7 +63,7 @@ export default defineContentScript({
       );
     };
 
-    chrome.runtime.onMessage.addListener((message) => {
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message?.type === "ANALYZE_PAGE") {
         analyze(Boolean(message.force));
         return;
@@ -89,8 +89,10 @@ export default defineContentScript({
             highlights: enriched,
             reportId: message.reportId as string | undefined,
           });
+
+          sendResponse({ highlights: enriched });
         })();
-        return;
+        return true;
       }
 
       if (message?.type === "CLEAR_PAGE_HIGHLIGHTS") {
