@@ -174,3 +174,72 @@ input[type="text"] {
   padding: 0;
   text-decoration: underline;
 }
+
+.risk-gauge-card {
+  display: flex;
+  justify-content: center;
+}
+
+.risk-gauge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.risk-gauge-chart {
+  position: relative;
+  width: 140px;
+  height: 140px;
+}
+
+.risk-gauge-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.risk-gauge-track {
+  color: #e2e8f0;
+}
+
+.risk-gauge-progress {
+  transition: stroke-dashoffset 0.3s ease;
+}
+
+.risk-gauge-stroke-low {
+  color: #16a34a;
+}
+
+.risk-gauge-stroke-moderate {
+  color: #d97706;
+}
+
+.risk-gauge-stroke-high {
+  color: #dc2626;
+}
+
+.risk-gauge-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.risk-gauge-score {
+  font-size: 1.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #1e3a8a;
+  line-height: 1.1;
+}
+
+.risk-gauge-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #3b82f6;
+}

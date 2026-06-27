@@ -2,7 +2,6 @@ import { formatDateTimeSGT } from "@darkpatterns/shared/date";
 import { matchHighlightToDetection } from "@darkpatterns/shared/highlight-matching";
 import type { ExtensionAnalyzeResponse } from "@darkpatterns/shared/types";
 import {
-  concernLevelLabel,
   DECISION_CHECKLIST,
   HOME_DISCLAIMER,
   REPORT_DISCLAIMER,
@@ -11,6 +10,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PageHighlight } from "@darkpatterns/shared/types";
 import type { TabReportState } from "../../lib/messages";
+import { RiskGauge } from "../../components/RiskGauge";
 import { getSettings, getTabReport, isAnalyzableUrl } from "../../lib/storage";
 
 type Report = ExtensionAnalyzeResponse["scan"];
@@ -105,6 +105,7 @@ export function SidePanelApp() {
   const [activeTabId, setActiveTabId] = useState<number | null>(null);
   const rescanStartedAtRef = useRef<number | null>(null);
   const rescanBaselineScanIdRef = useRef<string | null>(null);
+  const trackedTabIdRef = useRef<number | null>(null);
   const trackedTabUrlRef = useRef<string>("");
 
   const clearRescanTracking = useCallback(() => {
@@ -120,9 +121,15 @@ export function SidePanelApp() {
     if (!tab?.id) return;
 
     const nextTabUrl = tab.url ?? "";
-    if (trackedTabUrlRef.current !== nextTabUrl) {
+    const tabChanged = trackedTabIdRef.current !== tab.id;
+    const urlChanged = trackedTabUrlRef.current !== nextTabUrl;
+    const contextChanged = tabChanged || urlChanged;
+
+    if (contextChanged) {
+      trackedTabIdRef.current = tab.id;
       trackedTabUrlRef.current = nextTabUrl;
       clearRescanTracking();
+      setHighlightsVisible(true);
     }
 
     setActiveTabId(tab.id);
@@ -131,14 +138,19 @@ export function SidePanelApp() {
     setTermsAccepted(Boolean(settings.termsAcceptedAt));
 
     const state = await getTabReport(tab.id);
-    setReportState((previous) =>
-      mergeReportState(
-        previous,
-        state,
-        rescanStartedAtRef.current,
-        rescanBaselineScanIdRef.current,
-      ),
-    );
+
+    if (contextChanged) {
+      setReportState(state ?? { status: "idle" });
+    } else {
+      setReportState((previous) =>
+        mergeReportState(
+          previous,
+          state,
+          rescanStartedAtRef.current,
+          rescanBaselineScanIdRef.current,
+        ),
+      );
+    }
 
     if (state?.status !== "complete" || !rescanStartedAtRef.current) {
       return;
@@ -191,14 +203,25 @@ export function SidePanelApp() {
       void refresh();
     };
 
+    const onTabUpdated = (
+      tabId: number,
+      changeInfo: chrome.tabs.TabChangeInfo,
+    ) => {
+      if (changeInfo.url && trackedTabIdRef.current === tabId) {
+        void refresh();
+      }
+    };
+
     chrome.runtime.onMessage.addListener(onMessage);
     chrome.storage.onChanged.addListener(onStorageChanged);
     chrome.tabs.onActivated.addListener(onTabActivated);
+    chrome.tabs.onUpdated.addListener(onTabUpdated);
 
     return () => {
       chrome.runtime.onMessage.removeListener(onMessage);
       chrome.storage.onChanged.removeListener(onStorageChanged);
       chrome.tabs.onActivated.removeListener(onTabActivated);
+      chrome.tabs.onUpdated.removeListener(onTabUpdated);
     };
   }, [refresh]);
 
@@ -338,9 +361,6 @@ export function SidePanelApp() {
     <main className="panel">
       <header className="header">
         <h1>Scan report</h1>
-        <span className={`badge badge-${report.concernLevel.toLowerCase()}`}>
-          {concernLevelLabel(report.concernLevel)}
-        </span>
       </header>
 
       <p className="url" title={report.url}>
@@ -351,6 +371,10 @@ export function SidePanelApp() {
           Scanned on {scannedAt}
         </p>
       ) : null}
+
+      <section className="card risk-gauge-card">
+        <RiskGauge score={report.riskScore ?? 0} />
+      </section>
 
       {highlights.length > 0 ? (
         <section className="card">
