@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { submitScan } from "@/app/actions/scan/submitScan";
+import { runSubmitScan } from "@/lib/run-submit-scan";
 import { TermsOfUseDialog } from "@/components/scan/TermsOfUseDialog";
 import { readScreenshotFile } from "@/lib/screenshot-upload";
 import { hasAcceptedCurrentTerms } from "@/lib/terms-storage";
@@ -31,7 +31,7 @@ export function ScreenshotRescanForm({ url }: ScreenshotRescanFormProps) {
     setError(null);
 
     try {
-      const result = await submitScan(url, {
+      const result = await runSubmitScan(url, {
         userScreenshotBase64: parsed.base64,
         screenshotMimeType: parsed.mimeType,
       });
@@ -45,8 +45,6 @@ export function ScreenshotRescanForm({ url }: ScreenshotRescanFormProps) {
         setTimeout(resolve, SCAN_PROGRESS_COMPLETE_MS),
       );
       router.push(`/scan/${result.scanId}`);
-    } catch {
-      setError("We couldn't analyze that screenshot. Please try again.");
     } finally {
       setIsScanning(false);
     }

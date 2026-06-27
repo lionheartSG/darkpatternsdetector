@@ -1,3 +1,5 @@
+import type { ScanErrorCode } from "@/lib/scan-errors";
+
 export const DETECTION_CATEGORIES = [
   "URGENCY",
   "SCARCITY",
@@ -121,7 +123,12 @@ export type ScanWithDetections = {
 
 export type SubmitScanResult =
   | { ok: true; scanId: string }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      code?: ScanErrorCode;
+      scanId?: string;
+    };
 
 export type GetScanResult =
   | { ok: true; scan: ScanWithDetections }

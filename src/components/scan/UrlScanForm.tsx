@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { submitScan } from "@/app/actions/scan/submitScan";
+import { runSubmitScan } from "@/lib/run-submit-scan";
 import { ScanProgressOverlay } from "@/components/scan/ScanProgressOverlay";
 import { TermsOfUseDialog } from "@/components/scan/TermsOfUseDialog";
 import { Button } from "@/components/ui/Button";
@@ -56,25 +56,20 @@ export function UrlScanForm() {
     setScanPhase("running");
     setError(null);
 
-    try {
-      const result = await submitScan(scanUrl);
+    const result = await runSubmitScan(scanUrl);
 
-      if (!result.ok) {
-        setError(result.error);
-        setScanPhase("idle");
-        return;
-      }
-
-      setScanPhase("complete");
-      await new Promise((resolve) =>
-        setTimeout(resolve, SCAN_PROGRESS_COMPLETE_MS),
-      );
-      router.push(`/scan/${result.scanId}`);
+    if (!result.ok) {
+      setError(result.error);
       setScanPhase("idle");
-    } catch {
-      setError("We couldn't analyze that website. Check the URL and try again.");
-      setScanPhase("idle");
+      return;
     }
+
+    setScanPhase("complete");
+    await new Promise((resolve) =>
+      setTimeout(resolve, SCAN_PROGRESS_COMPLETE_MS),
+    );
+    router.push(`/scan/${result.scanId}`);
+    setScanPhase("idle");
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {

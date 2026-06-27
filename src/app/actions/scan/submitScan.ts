@@ -13,6 +13,11 @@ import { runHeuristics } from "@/lib/heuristics";
 import { buildAccessBlockedSummary } from "@/lib/page-access";
 import { prisma } from "@/lib/prisma";
 import { checkScanRateLimit, getRateLimitKey } from "@/lib/rate-limit";
+import {
+  classifyScanError,
+  logScanFailure,
+  type ScanErrorCode,
+} from "@/lib/scan-errors";
 import { parseUserScreenshot } from "@/lib/screenshot-upload";
 import { validateScanUrl } from "@/lib/url-validation";
 import { sanitizeWording } from "@/lib/wording/sanitize";
@@ -60,6 +65,62 @@ async function persistScanResult(
   });
 }
 
+async function markScanFailed(
+  scanId: string,
+  errorMessage: string,
+): Promise<void> {
+  await prisma.scan.update({
+    where: { id: scanId },
+    data: {
+      status: "FAILED",
+      errorMessage,
+      completedAt: new Date(),
+    },
+  });
+}
+
+function scanFailure(
+  error: unknown,
+  input: { url?: string; scanId?: string },
+): SubmitScanResult {
+  const classified = classifyScanError(error);
+
+  logScanFailure({
+    code: classified.code,
+    detail: classified.detail,
+    url: input.url,
+    scanId: input.scanId,
+    error,
+  });
+
+  return {
+    ok: false,
+    error: classified.message,
+    code: classified.code,
+    scanId: input.scanId,
+  };
+}
+
+function scanFailureMessage(
+  message: string,
+  code: ScanErrorCode,
+  scanId?: string,
+): SubmitScanResult {
+  logScanFailure({
+    code,
+    detail: message,
+    scanId,
+    error: new Error(message),
+  });
+
+  return {
+    ok: false,
+    error: message,
+    code,
+    scanId,
+  };
+}
+
 export async function submitScan(
   rawUrl: string,
   input?: SubmitScanInput,
@@ -67,30 +128,38 @@ export async function submitScan(
   const headersList = await headers();
   const rateLimit = checkScanRateLimit(getRateLimitKey(headersList));
   if (!rateLimit.allowed) {
-    return { ok: false, error: rateLimit.error };
+    return scanFailureMessage(rateLimit.error, "RATE_LIMIT");
   }
 
   const validation = await validateScanUrl(rawUrl);
   if (!validation.ok) {
-    return { ok: false, error: validation.error };
+    return scanFailureMessage(validation.error, "VALIDATION");
   }
 
-  const scan = await prisma.scan.create({
-    data: {
-      url: rawUrl.trim(),
-      normalizedUrl: validation.normalizedUrl,
-      status: "PROCESSING",
-    },
-  });
+  let scanId: string | undefined;
 
   try {
+    const scan = await prisma.scan.create({
+      data: {
+        url: rawUrl.trim(),
+        normalizedUrl: validation.normalizedUrl,
+        status: "PROCESSING",
+      },
+    });
+    scanId = scan.id;
+
     if (input?.userScreenshotBase64) {
       const screenshotPayload = parseUserScreenshot(
         input.userScreenshotBase64,
         input.screenshotMimeType,
       );
       if (!screenshotPayload.ok) {
-        return { ok: false, error: screenshotPayload.error };
+        await markScanFailed(scan.id, screenshotPayload.error);
+        return scanFailureMessage(
+          screenshotPayload.error,
+          "VALIDATION",
+          scan.id,
+        );
       }
 
       const analysis = await analyzeScreenshot({
@@ -197,28 +266,28 @@ export async function submitScan(
 
     return { ok: true, scanId: scan.id };
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Unable to analyze this website right now.";
+    const classified = classifyScanError(error);
 
-    console.error("[submitScan] scan failed:", message, error);
+    if (scanId) {
+      try {
+        await markScanFailed(scanId, classified.detail);
+      } catch (updateError) {
+        logScanFailure({
+          code: "DATABASE_CONNECTION",
+          detail:
+            updateError instanceof Error
+              ? updateError.message
+              : "Failed to persist scan failure status",
+          url: validation.normalizedUrl,
+          scanId,
+          error: updateError,
+        });
+      }
+    }
 
-    await prisma.scan.update({
-      where: { id: scan.id },
-      data: {
-        status: "FAILED",
-        errorMessage: message,
-        completedAt: new Date(),
-      },
+    return scanFailure(error, {
+      url: validation.normalizedUrl,
+      scanId,
     });
-
-    return {
-      ok: false,
-      error:
-        message.includes("OPENAI_API_KEY") || message.includes("vision")
-          ? message
-          : "We couldn't analyze that website. Check the URL and try again.",
-    };
   }
 }
