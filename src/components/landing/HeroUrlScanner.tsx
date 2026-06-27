@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import { submitScan } from "@/app/actions/scan/submitScan";
 import { ScanProgressOverlay } from "@/components/scan/ScanProgressOverlay";
 import { TermsOfUseDialog } from "@/components/scan/TermsOfUseDialog";
@@ -9,6 +9,10 @@ import { Button } from "@/components/ui/Button";
 import { HOMEPAGE_DISCLAIMER } from "@/lib/constants/disclaimers";
 import { readScreenshotFile } from "@/lib/screenshot-upload";
 import { hasAcceptedCurrentTerms } from "@/lib/terms-storage";
+import {
+  type ScanProgressPhase,
+  SCAN_PROGRESS_COMPLETE_MS,
+} from "@/hooks/useScanProgress";
 
 function validateUrl(
   input: string,
@@ -59,20 +63,35 @@ export function HeroUrlScanner() {
   const [error, setError] = useState<string | null>(null);
   const [termsOpen, setTermsOpen] = useState(false);
   const [pendingScan, setPendingScan] = useState<PendingScan | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [scanPhase, setScanPhase] = useState<ScanProgressPhase>("idle");
+  const isScanning = scanPhase !== "idle";
 
-  function beginScan(scan: PendingScan) {
-    startTransition(async () => {
+  async function beginScan(scan: PendingScan) {
+    setScanPhase("running");
+    setError(null);
+
+    try {
       const result = await submitScan(scan.url, {
         userScreenshotBase64: scan.screenshotBase64,
         screenshotMimeType: scan.screenshotMimeType,
       });
+
       if (!result.ok) {
         setError(result.error);
+        setScanPhase("idle");
         return;
       }
+
+      setScanPhase("complete");
+      await new Promise((resolve) =>
+        setTimeout(resolve, SCAN_PROGRESS_COMPLETE_MS),
+      );
       router.push(`/scan/${result.scanId}`);
-    });
+      setScanPhase("idle");
+    } catch {
+      setError("We couldn't analyze that website. Check the URL and try again.");
+      setScanPhase("idle");
+    }
   }
 
   async function prepareScan(scanUrl: string, file: File | null) {
@@ -140,9 +159,10 @@ export function HeroUrlScanner() {
         onAccept={handleTermsAccept}
       />
 
-      {isPending ? (
+      {isScanning ? (
         <ScanProgressOverlay
           url={url}
+          phase={scanPhase}
           headline={
             screenshotFile ? "Analysing uploaded screenshot…" : undefined
           }
@@ -168,7 +188,7 @@ export function HeroUrlScanner() {
                 if (error) setError(null);
               }}
               placeholder="Paste a public webpage URL"
-              disabled={isPending}
+              disabled={isScanning}
               autoComplete="url"
               aria-invalid={Boolean(error)}
               aria-describedby={error ? "url-error" : "url-helper"}
@@ -179,8 +199,8 @@ export function HeroUrlScanner() {
             <Button
               type="submit"
               size="lg"
-              loading={isPending}
-              disabled={isPending}
+              loading={isScanning}
+              disabled={isScanning}
               className="min-h-12 rounded-xl bg-primary px-6 text-on-primary hover:bg-primary/90 focus-visible:ring-primary sm:shrink-0"
             >
               {screenshotFile ? "Analyse screenshot" : "Scan webpage"}
@@ -204,7 +224,7 @@ export function HeroUrlScanner() {
               id="screenshot-upload"
               type="file"
               accept="image/png,image/jpeg,image/webp"
-              disabled={isPending}
+              disabled={isScanning}
               onChange={handleScreenshotChange}
               className="mt-3 block w-full text-sm text-secondary file:mr-3 file:rounded-lg file:border file:border-border file:bg-surface file:px-3 file:py-2 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted"
             />

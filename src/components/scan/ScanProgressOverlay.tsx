@@ -1,7 +1,10 @@
 "use client";
 
 import { ProgressBar } from "@/components/scan/ProgressBar";
-import { useScanProgress } from "@/hooks/useScanProgress";
+import {
+  type ScanProgressPhase,
+  useScanProgress,
+} from "@/hooks/useScanProgress";
 import {
   SCAN_LOADING_BODY,
   SCAN_LOADING_HEADLINE,
@@ -9,23 +12,25 @@ import {
 
 type ScanProgressOverlayProps = {
   url: string;
+  phase: ScanProgressPhase;
   headline?: string;
   body?: string;
 };
 
 export function ScanProgressOverlay({
   url,
+  phase,
   headline,
   body,
 }: ScanProgressOverlayProps) {
-  const progress = useScanProgress(true);
+  const progress = useScanProgress(phase);
   const displayUrl = url.length > 60 ? `${url.slice(0, 57)}…` : url;
 
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col bg-background"
       aria-live="polite"
-      aria-busy="true"
+      aria-busy={phase !== "complete"}
       role="dialog"
       aria-modal="true"
       aria-label="Scan in progress"

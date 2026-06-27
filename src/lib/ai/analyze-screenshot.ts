@@ -31,7 +31,7 @@ Rules:
 
 function getVisionModel() {
   return openai(
-    process.env.AI_VISION_MODEL ?? process.env.AI_MODEL ?? "gpt-4o",
+    process.env.AI_VISION_MODEL ?? process.env.AI_MODEL ?? "gpt-5.4-nano-2026-03-17",
   );
 }
 

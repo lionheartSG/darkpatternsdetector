@@ -1,11 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import { submitScan } from "@/app/actions/scan/submitScan";
 import { TermsOfUseDialog } from "@/components/scan/TermsOfUseDialog";
 import { readScreenshotFile } from "@/lib/screenshot-upload";
 import { hasAcceptedCurrentTerms } from "@/lib/terms-storage";
+import { SCAN_PROGRESS_COMPLETE_MS } from "@/hooks/useScanProgress";
 
 type ScreenshotRescanFormProps = {
   url: string;
@@ -17,7 +18,7 @@ export function ScreenshotRescanForm({ url }: ScreenshotRescanFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [termsOpen, setTermsOpen] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isScanning, setIsScanning] = useState(false);
 
   async function beginScreenshotScan(file: File) {
     const parsed = await readScreenshotFile(file);
@@ -26,17 +27,29 @@ export function ScreenshotRescanForm({ url }: ScreenshotRescanFormProps) {
       return;
     }
 
-    startTransition(async () => {
+    setIsScanning(true);
+    setError(null);
+
+    try {
       const result = await submitScan(url, {
         userScreenshotBase64: parsed.base64,
         screenshotMimeType: parsed.mimeType,
       });
+
       if (!result.ok) {
         setError(result.error);
         return;
       }
+
+      await new Promise((resolve) =>
+        setTimeout(resolve, SCAN_PROGRESS_COMPLETE_MS),
+      );
       router.push(`/scan/${result.scanId}`);
-    });
+    } catch {
+      setError("We couldn't analyze that screenshot. Please try again.");
+    } finally {
+      setIsScanning(false);
+    }
   }
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -93,13 +106,13 @@ export function ScreenshotRescanForm({ url }: ScreenshotRescanFormProps) {
             id="screenshot-rescan-upload"
             type="file"
             accept="image/png,image/jpeg,image/webp"
-            disabled={isPending}
+            disabled={isScanning}
             onChange={handleFileChange}
             className="block w-full text-sm text-secondary file:mr-3 file:rounded-lg file:border file:border-border file:bg-background file:px-3 file:py-2 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted"
           />
         </div>
 
-        {isPending ? (
+        {isScanning ? (
           <p className="mt-3 text-sm text-secondary">
             Analysing uploaded screenshot…
           </p>
