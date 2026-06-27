@@ -11,7 +11,8 @@ export type MessageType =
   | "TOGGLE_PAGE_HIGHLIGHTS"
   | "SCROLL_TO_HIGHLIGHT"
   | "CLEAR_PAGE_HIGHLIGHTS"
-  | "HIGHLIGHTS_UPDATED";
+  | "HIGHLIGHTS_UPDATED"
+  | "TAB_REPORT_UPDATED";
 
 export type AnalyzePageMessage = {
   type: "ANALYZE_PAGE";
@@ -55,11 +56,18 @@ export type SetPageHighlightsMessage = {
     evidence: string;
   }>;
   visible: boolean;
+  reportId?: string;
 };
 
 export type HighlightsUpdatedMessage = {
   type: "HIGHLIGHTS_UPDATED";
   highlights: PageHighlight[];
+  reportId?: string;
+};
+
+export type TabReportUpdatedMessage = {
+  type: "TAB_REPORT_UPDATED";
+  tabId: number;
 };
 
 export type TogglePageHighlightsMessage = {
@@ -89,7 +97,8 @@ export type ExtensionMessage =
   | TogglePageHighlightsMessage
   | ScrollToHighlightMessage
   | ClearPageHighlightsMessage
-  | HighlightsUpdatedMessage;
+  | HighlightsUpdatedMessage
+  | TabReportUpdatedMessage;
 
 export type TabReportState =
   | { status: "idle" }

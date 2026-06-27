@@ -9,6 +9,7 @@
     "./heuristics": "./heuristics/index.ts",
     "./page-context": "./page-context.ts",
     "./wording": "./wording/index.ts",
-    "./date": "./date.ts"
+    "./date": "./date.ts",
+    "./highlight-matching": "./highlight-matching.ts"
   }
 }

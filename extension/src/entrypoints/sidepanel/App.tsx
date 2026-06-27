@@ -1,4 +1,5 @@
 import { formatDateTimeSGT } from "@darkpatterns/shared/date";
+import { matchHighlightToDetection } from "@darkpatterns/shared/highlight-matching";
 import type { ExtensionAnalyzeResponse } from "@darkpatterns/shared/types";
 import {
   concernLevelLabel,
@@ -7,12 +8,74 @@ import {
   REPORT_DISCLAIMER,
   sanitizeText,
 } from "@darkpatterns/shared/wording";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PageHighlight } from "@darkpatterns/shared/types";
 import type { TabReportState } from "../../lib/messages";
 import { getSettings, getTabReport, isAnalyzableUrl } from "../../lib/storage";
 
 type Report = ExtensionAnalyzeResponse["scan"];
+
+function isScanNewerThan(
+  candidate: { id: string; completedAt: string | null },
+  current: { id: string; completedAt: string | null },
+): boolean {
+  if (candidate.id === current.id) {
+    return false;
+  }
+
+  const candidateAt = candidate.completedAt
+    ? new Date(candidate.completedAt).getTime()
+    : 0;
+  const currentAt = current.completedAt
+    ? new Date(current.completedAt).getTime()
+    : 0;
+
+  return candidateAt >= currentAt;
+}
+
+function mergeReportState(
+  previous: TabReportState,
+  next: TabReportState | null,
+  rescanStartedAt: number | null,
+): TabReportState {
+  const resolved = next ?? { status: "idle" as const };
+
+  if (previous.status === "complete" && resolved.status === "complete") {
+    if (isScanNewerThan(resolved.report, previous.report)) {
+      return resolved;
+    }
+    if (isScanNewerThan(previous.report, resolved.report)) {
+      return previous;
+    }
+    return resolved;
+  }
+
+  if (previous.status !== "analyzing") {
+    return resolved;
+  }
+
+  if (resolved.status === "analyzing") {
+    return resolved;
+  }
+
+  if (resolved.status === "error") {
+    return resolved;
+  }
+
+  if (resolved.status === "complete") {
+    const completedAt = resolved.report.completedAt;
+    if (
+      rescanStartedAt &&
+      completedAt &&
+      new Date(completedAt).getTime() < rescanStartedAt
+    ) {
+      return previous;
+    }
+    return resolved;
+  }
+
+  return previous;
+}
 
 function groupDetections(report: Report) {
   const groups = new Map<string, Report["detections"]>();
@@ -32,6 +95,7 @@ export function SidePanelApp() {
   const [tabUrl, setTabUrl] = useState<string>("");
   const [highlightsVisible, setHighlightsVisible] = useState(true);
   const [activeTabId, setActiveTabId] = useState<number | null>(null);
+  const rescanStartedAtRef = useRef<number | null>(null);
 
   const refresh = useCallback(async () => {
     const [tab] = await chrome.tabs.query({
@@ -46,16 +110,72 @@ export function SidePanelApp() {
     setTermsAccepted(Boolean(settings.termsAcceptedAt));
 
     const state = await getTabReport(tab.id);
-    setReportState(state ?? { status: "idle" });
+    setReportState((previous) =>
+      mergeReportState(previous, state, rescanStartedAtRef.current),
+    );
+
+    if (
+      state?.status === "complete" &&
+      rescanStartedAtRef.current &&
+      state.report.completedAt &&
+      new Date(state.report.completedAt).getTime() >= rescanStartedAtRef.current
+    ) {
+      rescanStartedAtRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
     void refresh();
+
+    const onMessage = (message: unknown) => {
+      if (
+        message &&
+        typeof message === "object" &&
+        (message as { type?: string }).type === "TAB_REPORT_UPDATED"
+      ) {
+        void refresh();
+      }
+    };
+
+    const onStorageChanged = (
+      changes: Record<string, chrome.storage.StorageChange>,
+      areaName: string,
+    ) => {
+      if (areaName !== "session") {
+        return;
+      }
+
+      if (Object.keys(changes).some((key) => key.startsWith("tabReport:"))) {
+        void refresh();
+      }
+    };
+
+    const onTabActivated = () => {
+      void refresh();
+    };
+
+    chrome.runtime.onMessage.addListener(onMessage);
+    chrome.storage.onChanged.addListener(onStorageChanged);
+    chrome.tabs.onActivated.addListener(onTabActivated);
+
+    return () => {
+      chrome.runtime.onMessage.removeListener(onMessage);
+      chrome.storage.onChanged.removeListener(onStorageChanged);
+      chrome.tabs.onActivated.removeListener(onTabActivated);
+    };
+  }, [refresh]);
+
+  useEffect(() => {
+    if (reportState.status !== "analyzing") {
+      return;
+    }
+
     const interval = window.setInterval(() => {
       void refresh();
     }, 2000);
+
     return () => window.clearInterval(interval);
-  }, [refresh]);
+  }, [reportState.status, refresh]);
 
   const handleRescan = async () => {
     const [tab] = await chrome.tabs.query({
@@ -64,6 +184,7 @@ export function SidePanelApp() {
     });
     if (!tab?.id) return;
 
+    rescanStartedAtRef.current = Date.now();
     setReportState({ status: "analyzing" });
 
     const response = (await chrome.runtime.sendMessage({
@@ -72,6 +193,7 @@ export function SidePanelApp() {
     })) as { ok?: boolean; error?: string } | undefined;
 
     if (!response?.ok) {
+      rescanStartedAtRef.current = null;
       const state = await getTabReport(tab.id);
       setReportState(
         state ?? {
@@ -79,7 +201,10 @@ export function SidePanelApp() {
           error: response?.error ?? "Unable to start rescan on this page.",
         },
       );
+      return;
     }
+
+    void refresh();
   };
 
   const handleToggleHighlights = async () => {
@@ -109,21 +234,6 @@ export function SidePanelApp() {
       tabId: activeTabId,
       highlightId: highlight.id,
     });
-  };
-
-  const findHighlightForDetection = (
-    highlights: PageHighlight[],
-    category: string,
-    patternType: string,
-  ): PageHighlight | undefined => {
-    return (
-      highlights.find(
-        (highlight) =>
-          highlight.category === category &&
-          highlight.patternType === patternType,
-      ) ??
-      highlights.find((highlight) => highlight.category === category)
-    );
   };
 
   if (!termsAccepted) {
@@ -197,7 +307,11 @@ export function SidePanelApp() {
       <p className="url" title={report.url}>
         {report.url}
       </p>
-      {scannedAt ? <p className="muted">Scanned on {scannedAt}</p> : null}
+      {scannedAt ? (
+        <p className="muted" key={report.id}>
+          Scanned on {scannedAt}
+        </p>
+      ) : null}
 
       {highlights.length > 0 ? (
         <section className="card">
@@ -232,10 +346,9 @@ export function SidePanelApp() {
             <div key={category} className="card">
               <h3>{category.replaceAll("_", " ")}</h3>
               {detections.map((detection) => {
-                const highlight = findHighlightForDetection(
+                const highlight = matchHighlightToDetection(
                   highlights,
-                  detection.category,
-                  detection.patternType,
+                  detection,
                 );
 
                 return (

@@ -1,4 +1,5 @@
 import { assessPageAccess, type PageAccessStatus } from "@/lib/page-access";
+import type { Page } from "playwright-core";
 
 export type FetchedPage = {
   finalUrl: string;
@@ -18,6 +19,15 @@ const MAX_STORED_SCREENSHOT_CHARS = 500_000;
 const BROWSER_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
+const STEALTH_LAUNCH_ARGS = ["--disable-blink-features=AutomationControlled"];
+
+const BOT_CHALLENGE_URL_PATTERNS = [
+  /\/\.well-known\/sgcaptcha/i,
+  /\/\.well-known\/captcha/i,
+];
+
+const BOT_CHALLENGE_RESOLVE_TIMEOUT_MS = 35_000;
+
 const COUNTDOWN_SELECTORS = [
   "[class*='countdown' i]",
   "[id*='countdown' i]",
@@ -27,6 +37,30 @@ const COUNTDOWN_SELECTORS = [
   "[data-timer]",
   "[role='timer']",
 ].join(", ");
+
+function isBotChallengeUrl(url: string): boolean {
+  return BOT_CHALLENGE_URL_PATTERNS.some((pattern) => pattern.test(url));
+}
+
+async function waitForBotChallengeResolution(page: Page): Promise<void> {
+  if (!isBotChallengeUrl(page.url())) {
+    return;
+  }
+
+  try {
+    await page.waitForURL(
+      (url) => !isBotChallengeUrl(url.toString()),
+      {
+        timeout: BOT_CHALLENGE_RESOLVE_TIMEOUT_MS,
+        waitUntil: "domcontentloaded",
+      },
+    );
+    await page.waitForLoadState("load", { timeout: 15_000 }).catch(() => undefined);
+    await page.waitForTimeout(2000);
+  } catch {
+    // The host's bot challenge did not finish within the allowed window.
+  }
+}
 
 async function getBrowser() {
   const isServerless = Boolean(
@@ -38,14 +72,17 @@ async function getBrowser() {
     const { chromium: playwrightChromium } = await import("playwright-core");
 
     return playwrightChromium.launch({
-      args: chromium.args,
+      args: [...chromium.args, ...STEALTH_LAUNCH_ARGS],
       executablePath: await chromium.executablePath(),
       headless: true,
     });
   }
 
   const { chromium } = await import("playwright");
-  return chromium.launch({ headless: true });
+  return chromium.launch({
+    headless: true,
+    args: STEALTH_LAUNCH_ARGS,
+  });
 }
 
 async function createBrowserContext(
@@ -72,6 +109,9 @@ async function createBrowserContext(
     Object.defineProperty(navigator, "webdriver", {
       get: () => false,
     });
+    Object.defineProperty(navigator, "languages", {
+      get: () => ["en-SG", "en"],
+    });
   });
 
   return context;
@@ -92,6 +132,13 @@ export async function fetchPage(url: string): Promise<FetchedPage> {
     const page = await context.newPage();
     page.setDefaultTimeout(FETCH_TIMEOUT_MS);
 
+    let latestDocumentStatus = 0;
+    page.on("response", (res) => {
+      if (res.request().resourceType() === "document") {
+        latestDocumentStatus = res.status();
+      }
+    });
+
     let response = await page.goto(url, {
       waitUntil: "load",
       timeout: FETCH_TIMEOUT_MS,
@@ -105,7 +152,15 @@ export async function fetchPage(url: string): Promise<FetchedPage> {
       });
     }
 
-    const httpStatus = response?.status() ?? 0;
+    const initialStatus = response?.status() ?? latestDocumentStatus;
+    if (initialStatus === 202 || isBotChallengeUrl(page.url())) {
+      await waitForBotChallengeResolution(page);
+    }
+
+    let httpStatus = latestDocumentStatus || (response?.status() ?? 0);
+    if (!isBotChallengeUrl(page.url()) && httpStatus === 202) {
+      httpStatus = 200;
+    }
 
     await page.waitForTimeout(2000);
 

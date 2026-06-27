@@ -3,6 +3,7 @@ import type {
   PageHighlight,
   PageType,
 } from "@darkpatterns/shared/types";
+import { patternTypesMatch } from "@darkpatterns/shared/highlight-matching";
 
 export const HIGHLIGHT_ID_ATTR = "data-dpd-highlight-id";
 export const HIGHLIGHT_BOX_ATTR = "data-dpd-highlight-box";
@@ -44,6 +45,11 @@ const URGENCY_PATTERNS = [
   /ends today/i,
   /last chance/i,
   /flash sale/i,
+  /shop now before/i,
+  /before it['']?s gone/i,
+  /act now/i,
+  /hurry/i,
+  /don['']?t miss out/i,
 ];
 
 const SCARCITY_PATTERNS = [
@@ -118,6 +124,28 @@ const NAGGING_PATTERNS = [
   /before you go/i,
   /wait!? don't leave/i,
   /enable notifications/i,
+  /popup/i,
+  /modal/i,
+  /sticky (bar|banner|footer)/i,
+];
+
+const ENROLLMENT_PATTERNS = [
+  /sign in/i,
+  /log in/i,
+  /register/i,
+  /create account/i,
+  /my orders/i,
+  /my favorites/i,
+  /join now/i,
+];
+
+const REVIEW_PATTERNS = [
+  /review/i,
+  /testimonial/i,
+  /customer said/i,
+  /★|⭐/,
+  /rated \d/i,
+  /\d out of 5/i,
 ];
 
 const SNEAKING_PATTERNS = [
@@ -506,8 +534,8 @@ function collectStickyHighlights(
       addCandidate(
         element,
         {
-          category: "OBSTRUCTION",
-          patternType: "StickyPressureBanner",
+          category: "NAGGING",
+          patternType: "RepeatedPopupOrStickyBanner",
           severity: "MEDIUM",
           label: "Sticky overlay",
         },
@@ -577,9 +605,25 @@ function collectTextHighlights(
         element,
         {
           category: "SOCIAL_PROOF",
-          patternType: "LiveActivityMessage",
+          patternType: "ActivityNotifications",
           severity: "MEDIUM",
           label: "Social proof cue",
+        },
+        pageType,
+        seen,
+      );
+      continue;
+    }
+
+    const review = firstMatchingPattern(text, REVIEW_PATTERNS);
+    if (review) {
+      addCandidate(
+        element,
+        {
+          category: "SOCIAL_PROOF",
+          patternType: "ActivityNotifications",
+          severity: "MEDIUM",
+          label: "Review or testimonial",
         },
         pageType,
         seen,
@@ -625,9 +669,25 @@ function collectTextHighlights(
         element,
         {
           category: "NAGGING",
-          patternType: "RepeatedPrompt",
+          patternType: "RepeatedPopupOrStickyBanner",
           severity: "MEDIUM",
           label: "Repeated prompt",
+        },
+        pageType,
+        seen,
+      );
+      continue;
+    }
+
+    const enrollment = firstMatchingPattern(text, ENROLLMENT_PATTERNS);
+    if (enrollment) {
+      addCandidate(
+        element,
+        {
+          category: "FORCED_ACTION",
+          patternType: "RequiredEnrollment",
+          severity: "MEDIUM",
+          label: "Sign-in prompt",
         },
         pageType,
         seen,
@@ -667,7 +727,9 @@ function labelForDetection(detection: HighlightDetection): string {
     case "OBSTRUCTION":
       return "Sticky overlay";
     case "FORCED_ACTION":
-      return "Pressure wording";
+      return detection.patternType === "RequiredEnrollment"
+        ? "Sign-in prompt"
+        : "Pressure wording";
     case "PRICING_DECEPTION":
       return "Pricing cue";
     case "NAGGING":
@@ -883,18 +945,170 @@ function findElementByEvidence(evidence: string): HTMLElement | null {
   return null;
 }
 
+const POPUP_SELECTORS = [
+  '[role="dialog"]',
+  '[class*="modal"]',
+  '[class*="popup"]',
+  '[class*="overlay"]',
+  '[class*="newsletter"]',
+].join(",");
+
+function findStructuralPopupElement(): HTMLElement | null {
+  for (const element of document.querySelectorAll<HTMLElement>(POPUP_SELECTORS)) {
+    if (isVisibleHighlightElement(element)) {
+      return element;
+    }
+  }
+
+  for (const element of document.querySelectorAll<HTMLElement>("*")) {
+    const style = window.getComputedStyle(element);
+    if (style.position !== "fixed" && style.position !== "sticky") {
+      continue;
+    }
+    if (isNestedStickyElement(element)) {
+      continue;
+    }
+
+    const text = (element.innerText ?? "").trim();
+    if (text.length === 0 || text.length > 500) {
+      continue;
+    }
+    if (isVisibleHighlightElement(element)) {
+      return element;
+    }
+  }
+
+  return null;
+}
+
+function findStructuralEnrollmentElement(): HTMLElement | null {
+  for (const element of document.querySelectorAll<HTMLElement>(
+    "a, button, nav, header, [class*='account'], [class*='signin'], [class*='login']",
+  )) {
+    if (!isVisibleHighlightElement(element)) {
+      continue;
+    }
+
+    const text = (element.innerText ?? "").trim();
+    if (text.length < 3 || text.length > 200) {
+      continue;
+    }
+
+    if (firstMatchingPattern(text, ENROLLMENT_PATTERNS)) {
+      return element;
+    }
+  }
+
+  return null;
+}
+
+function findStructuralReviewElement(): HTMLElement | null {
+  for (const element of document.querySelectorAll<HTMLElement>(
+    '[class*="review"], [class*="testimonial"], blockquote, [itemprop="review"]',
+  )) {
+    if (isVisibleHighlightElement(element)) {
+      return element;
+    }
+  }
+
+  for (const element of document.querySelectorAll<HTMLElement>(
+    "p, span, div, section, article",
+  )) {
+    if (!isVisibleHighlightElement(element)) {
+      continue;
+    }
+
+    const text = (element.innerText ?? "").trim();
+    if (text.length < 20 || text.length > 600) {
+      continue;
+    }
+
+    if (firstMatchingPattern(text, REVIEW_PATTERNS)) {
+      return element;
+    }
+  }
+
+  return null;
+}
+
+function findStructuralSocialProofElement(): HTMLElement | null {
+  for (const element of document.querySelectorAll<HTMLElement>(
+    "p, span, div, button, a, label, li, strong, em, small",
+  )) {
+    if (!isVisibleHighlightElement(element)) {
+      continue;
+    }
+
+    const text = (element.innerText ?? "").trim();
+    if (text.length < 3 || text.length > 200) {
+      continue;
+    }
+
+    if (firstMatchingPattern(text, SOCIAL_PROOF_PATTERNS)) {
+      return element;
+    }
+  }
+
+  return null;
+}
+
 function findElementForDetection(
   detection: HighlightDetection,
 ): HTMLElement | null {
   if (detection.category === "PRICING_DECEPTION") {
-    return findElementByPricingEvidence(detection.evidence);
+    return (
+      findElementByPricingEvidence(detection.evidence) ??
+      findStructuralPricingElement()
+    );
   }
 
   if (detection.category === "SCARCITY") {
-    return findElementByScarcityEvidence(detection.evidence);
+    return (
+      findElementByScarcityEvidence(detection.evidence) ??
+      findStructuralScarcityElement()
+    );
   }
 
-  return findElementByEvidence(detection.evidence);
+  const byEvidence = findElementByEvidence(detection.evidence);
+  if (byEvidence) {
+    return byEvidence;
+  }
+
+  if (
+    detection.category === "NAGGING" ||
+    patternTypesMatch(detection.patternType, "RepeatedPopupOrStickyBanner")
+  ) {
+    return findStructuralPopupElement();
+  }
+
+  if (
+    detection.category === "FORCED_ACTION" &&
+    patternTypesMatch(detection.patternType, "RequiredEnrollment")
+  ) {
+    return findStructuralEnrollmentElement();
+  }
+
+  if (detection.category === "SOCIAL_PROOF") {
+    return (
+      findStructuralReviewElement() ?? findStructuralSocialProofElement()
+    );
+  }
+
+  if (detection.category === "URGENCY") {
+    for (const element of document.querySelectorAll<HTMLElement>(
+      INTERACTIVE_SELECTORS,
+    )) {
+      const text = element.innerText ?? "";
+      if (text.length < 4 || text.length > 400) {
+        continue;
+      }
+      if (firstMatchingPattern(`${text}\n${element.outerHTML}`, URGENCY_PATTERNS)) {
+        return element;
+      }
+    }
+  }
+
+  return null;
 }
 
 function finalizeHighlights(seen: Map<Element, PageHighlight>): PageHighlight[] {
@@ -941,22 +1155,29 @@ export function enrichHighlightsFromDetections(
   );
 
   for (const detection of [...pricingDetections, ...otherDetections]) {
-    const alreadyLinked =
-      existing.some(
-        (highlight) =>
-          highlight.category === detection.category &&
-          highlight.patternType === detection.patternType,
-      ) ||
-      Array.from(seen.values()).some(
-        (highlight) => highlight.category === detection.category,
-      );
-
-    if (alreadyLinked) {
+    const element = findElementForDetection(detection);
+    if (!element) {
       continue;
     }
 
-    const element = findElementForDetection(detection);
-    if (!element) {
+    const target = highlightTarget(element);
+    if (!(target instanceof HTMLElement)) {
+      continue;
+    }
+
+    const existingForTarget = seen.get(target);
+    if (existingForTarget) {
+      seen.set(target, {
+        ...existingForTarget,
+        patternType: detection.patternType,
+        evidence: detection.evidence || existingForTarget.evidence,
+        severity:
+          severityRank(detection.severity) >
+          severityRank(existingForTarget.severity)
+            ? detection.severity
+            : existingForTarget.severity,
+        label: labelForDetection(detection),
+      });
       continue;
     }
 
@@ -967,6 +1188,7 @@ export function enrichHighlightsFromDetections(
         patternType: detection.patternType,
         severity: detection.severity,
         label: labelForDetection(detection),
+        evidence: detection.evidence,
       },
       pageType,
       seen,

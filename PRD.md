@@ -67,6 +67,7 @@ Validate and block unsafe targets:
 **Restrictions (P0):**
 
 - Public pages only — no login bypass, CAPTCHA bypass, or paywall bypass.
+- Hosts that block automated browsers (e.g. SiteGround `sgcaptcha`, Cloudflare) may prevent a full fetch. The scanner waits up to ~35s for automatic proof-of-work interstitials to finish; if access is still blocked, the report shows an obstruction notice and the user can upload a screenshot from their own browser instead.
 
 ### 2.5 Design cue detection
 

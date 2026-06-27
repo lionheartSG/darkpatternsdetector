@@ -33,6 +33,8 @@ export type PageHighlight = {
   patternType: string;
   severity: DetectionSeverity;
   label: string;
+  /** Evidence snippet used to link this highlight back to a detection. */
+  evidence?: string;
 };
 
 export type AnalysisDetection = {

@@ -12,7 +12,7 @@ import {
   suggestedActionForCategory,
 } from "@darkpatterns/shared/wording";
 import { analyzeWithBackend, fetchCachedReportFromBackend } from "../api/client";
-import type { AnalyzePageMessage } from "../lib/messages";
+import type { AnalyzePageMessage, TabReportUpdatedMessage } from "../lib/messages";
 import {
   clearUrlReportCache,
   getSettings,
@@ -29,6 +29,22 @@ const debounceTimers = new Map<number, ReturnType<typeof setTimeout>>();
 const inFlightUrls = new Set<string>();
 const pendingHighlights = new Map<number, PageHighlight[]>();
 const DEBOUNCE_MS = 2000;
+
+function notifyTabReportUpdated(tabId: number): void {
+  void chrome.runtime
+    .sendMessage({ type: "TAB_REPORT_UPDATED", tabId } satisfies TabReportUpdatedMessage)
+    .catch(() => {
+      // Side panel may be closed.
+    });
+}
+
+async function updateTabReport(
+  tabId: number,
+  state: import("../lib/messages").TabReportState,
+): Promise<void> {
+  await setTabReport(tabId, state);
+  notifyTabReportUpdated(tabId);
+}
 
 function concernBadgeText(level: string): string {
   switch (level) {
@@ -128,11 +144,30 @@ function buildLocalFallbackReport(
   };
 }
 
+function isScanNewerThan(
+  candidate: { id: string; completedAt: string | null },
+  current: { id: string; completedAt: string | null },
+): boolean {
+  if (candidate.id === current.id) {
+    return false;
+  }
+
+  const candidateAt = candidate.completedAt
+    ? new Date(candidate.completedAt).getTime()
+    : 0;
+  const currentAt = current.completedAt
+    ? new Date(current.completedAt).getTime()
+    : 0;
+
+  return candidateAt >= currentAt;
+}
+
 async function syncHighlightsToTab(
   tabId: number,
   highlights: PageHighlight[],
   visible: boolean,
   detections: ExtensionAnalyzeResponse["scan"]["detections"] = [],
+  reportId?: string,
 ): Promise<void> {
   try {
     if (!visible) {
@@ -150,6 +185,7 @@ async function syncHighlightsToTab(
       highlights,
       detections,
       visible: true,
+      reportId,
     });
   } catch {
     // Content script may not be ready on this tab.
@@ -161,13 +197,14 @@ async function applyCachedReport(
   report: ExtensionAnalyzeResponse["scan"],
   highlights: PageHighlight[] = [],
 ): Promise<void> {
-  await setTabReport(tabId, { status: "complete", report, highlights });
+  await updateTabReport(tabId, { status: "complete", report, highlights });
   await updateBadge(tabId, report.concernLevel);
   await syncHighlightsToTab(
     tabId,
     highlights,
     highlights.length > 0 || report.detections.length > 0,
     report.detections,
+    report.id,
   );
 }
 
@@ -176,12 +213,6 @@ async function hydrateTabFromCache(
   url: string,
 ): Promise<boolean> {
   const existing = await getTabReport(tabId);
-  if (
-    existing?.status === "complete" &&
-    urlsMatchForCache(existing.report.normalizedUrl ?? existing.report.url, url)
-  ) {
-    return true;
-  }
 
   let cached = await getUrlReportCache(url);
   if (!cached) {
@@ -192,7 +223,13 @@ async function hydrateTabFromCache(
   }
 
   if (!cached) {
-    return false;
+    return (
+      existing?.status === "complete" &&
+      urlsMatchForCache(
+        existing.report.normalizedUrl ?? existing.report.url,
+        url,
+      )
+    );
   }
 
   if (
@@ -200,7 +237,8 @@ async function hydrateTabFromCache(
     urlsMatchForCache(
       existing.report.normalizedUrl ?? existing.report.url,
       cached.normalizedUrl ?? cached.url,
-    )
+    ) &&
+    !isScanNewerThan(cached, existing.report)
   ) {
     return true;
   }
@@ -246,7 +284,7 @@ async function runAnalysis(
     pageType: payload.pageType,
   });
 
-  await setTabReport(tabId, { status: "analyzing" });
+  await updateTabReport(tabId, { status: "analyzing" });
   await updateBadge(tabId, null, true);
   await syncHighlightsToTab(tabId, [], false);
 
@@ -274,6 +312,7 @@ async function runAnalysis(
       heuristicSignals,
     );
 
+    await setUrlReportCache(payload.url, fallback);
     await applyCachedReport(tabId, fallback, highlights);
   } finally {
     pendingHighlights.delete(tabId);
@@ -314,7 +353,7 @@ export default defineBackground(() => {
       const tab = await chrome.tabs.get(activeInfo.tabId);
       if (!isAnalyzableUrl(tab.url)) {
         await updateBadge(activeInfo.tabId, null);
-        await setTabReport(activeInfo.tabId, { status: "idle" });
+        await updateTabReport(activeInfo.tabId, { status: "idle" });
         await syncHighlightsToTab(activeInfo.tabId, [], false);
         return;
       }
@@ -330,6 +369,7 @@ export default defineBackground(() => {
             highlights,
             true,
             detections,
+            state.report.id,
           );
         }
       }
@@ -418,7 +458,7 @@ export default defineBackground(() => {
         }
 
         await clearUrlReportCache(tab.url as string);
-        await setTabReport(tabId, { status: "analyzing" });
+        await updateTabReport(tabId, { status: "analyzing" });
         await updateBadge(tabId, null, true);
         await syncHighlightsToTab(tabId, [], false);
         pendingHighlights.delete(tabId);
@@ -467,12 +507,19 @@ export default defineBackground(() => {
 
       void (async () => {
         const state = await getTabReport(tabId);
-        if (state?.status === "complete") {
-          await setTabReport(tabId, {
-            ...state,
-            highlights: message.highlights as PageHighlight[],
-          });
+        if (state?.status !== "complete") {
+          return;
         }
+
+        const reportId = message.reportId as string | undefined;
+        if (reportId && state.report.id !== reportId) {
+          return;
+        }
+
+        await updateTabReport(tabId, {
+          ...state,
+          highlights: message.highlights as PageHighlight[],
+        });
       })();
 
       return true;
@@ -501,6 +548,7 @@ export default defineBackground(() => {
           highlights,
           Boolean(message.visible),
           detections,
+          state?.status === "complete" ? state.report.id : undefined,
         );
         sendResponse({ ok: true });
       })();

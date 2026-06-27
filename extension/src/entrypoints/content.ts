@@ -87,6 +87,7 @@ export default defineContentScript({
           await chrome.runtime.sendMessage({
             type: "HIGHLIGHTS_UPDATED",
             highlights: enriched,
+            reportId: message.reportId as string | undefined,
           });
         })();
         return;

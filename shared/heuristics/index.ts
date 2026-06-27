@@ -141,7 +141,7 @@ export function detectSocialProof(
   return [
     {
       category: "SOCIAL_PROOF",
-      patternType: "LiveActivityMessage",
+      patternType: "ActivityNotifications",
       severity: "MEDIUM",
       description:
         "Possible social proof cue detected. Visitor count messages may create social proof.",

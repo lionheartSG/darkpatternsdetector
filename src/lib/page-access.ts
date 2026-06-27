@@ -17,6 +17,7 @@ const BLOCKED_TEXT_PATTERNS = [
   /\bjust a moment\b.*\bcloudflare\b/i,
   /\bbot detection\b/i,
   /\bsecurity check\b/i,
+  /\bchecking the site connection security\b/i,
 ];
 
 export function assessPageAccess(input: {
@@ -50,6 +51,15 @@ export function assessPageAccess(input: {
       blocked: true,
       httpStatus: input.httpStatus,
       reason: "The page title indicates access was forbidden",
+    };
+  }
+
+  if (/robot challenge screen/i.test(input.pageTitle.trim())) {
+    return {
+      blocked: true,
+      httpStatus: input.httpStatus,
+      reason:
+        "The host's bot-protection challenge did not complete before the scan timed out",
     };
   }
 
