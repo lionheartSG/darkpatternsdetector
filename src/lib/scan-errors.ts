@@ -85,8 +85,10 @@ export function classifyScanError(error: unknown): ClassifiedScanError {
       "libnspr4",
       "libatk",
       "chromium",
+      "chromium-min",
       "playwright",
       "@sparticuz/chromium",
+      "@sparticuz/chromium-min",
     ])
   ) {
     return {

@@ -1,4 +1,8 @@
 import { assessPageAccess, type PageAccessStatus } from "@/lib/page-access";
+import {
+  isServerlessRuntime,
+  launchServerlessBrowser,
+} from "@/lib/serverless-chromium";
 import type { Page } from "playwright-core";
 
 export type FetchedPage = {
@@ -63,21 +67,8 @@ async function waitForBotChallengeResolution(page: Page): Promise<void> {
 }
 
 async function getBrowser() {
-  const isServerless = Boolean(
-    process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME,
-  );
-
-  if (isServerless) {
-    const chromium = (await import("@sparticuz/chromium")).default;
-    const { chromium: playwrightChromium } = await import("playwright-core");
-
-    chromium.setGraphicsMode = false;
-
-    return playwrightChromium.launch({
-      args: [...chromium.args, ...STEALTH_LAUNCH_ARGS],
-      executablePath: await chromium.executablePath(),
-      headless: true,
-    });
+  if (isServerlessRuntime()) {
+    return launchServerlessBrowser(STEALTH_LAUNCH_ARGS);
   }
 
   const { chromium } = await import("playwright");

@@ -61,13 +61,36 @@ Without `OPENAI_API_KEY`, the app falls back to heuristic-only analysis.
 
 ## Deployment (Vercel)
 
-- Set `DATABASE_URL` and `OPENAI_API_KEY` in project environment variables.
-- For Playwright on serverless, the app uses `@sparticuz/chromium` + `playwright-core`.
-- `next.config.ts` marks those packages as `serverExternalPackages` so Chromium binaries are not bundled incorrectly.
-- The home page exports `maxDuration = 60` so the `submitScan` server action can finish page fetch + AI analysis (Vercel default is 10s without this).
-- **Vercel Pro** (or higher) is required for function durations above 10 seconds on most plans.
+Per [Vercel's Puppeteer guide](https://vercel.com/kb/guide/deploying-puppeteer-with-nextjs-on-vercel), serverless browser automation must use a **small browser driver + remote Chromium pack**, not the full Playwright/Puppeteer bundle.
 
-After deploying, if a scan still fails, open the failed scan at `/scan/[id]` — the stored `errorMessage` and Vercel function logs show the underlying cause.
+This project uses:
+
+- **`playwright-core`** — lightweight driver (no bundled browser)
+- **`@sparticuz/chromium-min`** — minimal package; downloads Chromium from a remote tarball at runtime
+- **`vercel.json`** — `maxDuration: 60`, `memory: 3008` on scan routes
+- **`next.config.ts`** — `serverExternalPackages` so binaries are not bundled incorrectly
+- **`src/app/page.tsx`** — `runtime = "nodejs"`, `maxDuration = 60`
+
+### Required Vercel environment variables
+
+| Variable | Required |
+|----------|----------|
+| `DATABASE_URL` | Yes |
+| `OPENAI_API_KEY` | Recommended |
+| `CHROMIUM_REMOTE_EXEC_PATH` | Optional (defaults to Sparticuz v131.0.1 pack on GitHub) |
+
+### Limits to expect
+
+- First scan on a cold function downloads ~50MB Chromium — can take 10–20s extra
+- Scans need up to ~60s total (`maxDuration`)
+- Set function memory to **3008 MB** in Vercel dashboard if Fluid Compute ignores `vercel.json` memory
+- If GitHub download fails or times out, host the `.tar` pack on **Vercel Blob** and set `CHROMIUM_REMOTE_EXEC_PATH` to that URL
+
+### Local development
+
+Uses full **`playwright`** + `npx playwright install chromium` (not the remote pack).
+
+After deploying, check Vercel function logs for `[submitScan] failed:` if scans still fail.
 
 ## Scripts
 
